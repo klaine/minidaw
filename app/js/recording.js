@@ -179,7 +179,8 @@ export class Recording {
       if (!clip || !clip.notes.length || cancelled) {
         if (t && t.slots[take.scene] === take.clipId) t.slots[take.scene] = null;
         delete p.clips[take.clipId];
-        if (sess.playing && sess.playing.clipId === take.clipId) { sess.playing = null; }
+        // the track was playing this take: it goes back to the arrangement, not to a session clip that isn't there
+        if (sess.playing && sess.playing.clipId === take.clipId) { sess.playing = null; sess.follow = true; if (tr.fresh) tr.fresh.add(take.trackId); }
         if (sess.queued && sess.queued.clipId === take.clipId) sess.queued = null;
         tr.emit("session");
         return;

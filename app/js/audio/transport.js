@@ -71,9 +71,11 @@ export class Transport {
 
   // ---- play / stop ----
   /** Play from song beat `from`; countIn: beats of clicks first (the song is silent until `from`) */
-  play(from = this.position, { countIn = 0 } = {}) {
+  play(from = this.position, { countIn = 0, keepSession = false } = {}) {
     if (this.playing) this.halt();
     const p = this.project;
+    // from a stop nothing is playing in the session: every track follows the arrangement, except ones being launched
+    if (!keepSession) for (const s of this.session.values()) if (!s.queued) { s.playing = null; s.follow = true; }
     this.playing = true;
     this.playStart = from;
     this.prerollEnd = countIn > 0 ? from : null;
@@ -105,7 +107,8 @@ export class Transport {
     const was = this.playing;
     if (was) this.halt();
     this.position = was ? this.playStart : 0;
-    for (const s of this.session.values()) { s.playing = null; s.queued = null; }
+    // the session's clips stop with the transport, so every track is back on the arrangement
+    for (const s of this.session.values()) { s.playing = null; s.queued = null; s.follow = true; }
     this.engine.setTempo(this.project.bpm, false);
     this.applyStatic();
     this.emit("stop");
@@ -115,8 +118,17 @@ export class Transport {
   seek(beat) {
     beat = Math.max(0, beat);
     if (this.playing) {
+      // session clips go on from where they are (the global clock starts again from 0)
+      const g = this.beatsAt(this.ctx.currentTime).g;
+      const phase = new Map();
+      for (const [id, s] of this.session) {
+        const clip = s.playing && this.project.clips[s.playing.clipId];
+        if (clip) phase.set(id, (((g - s.playing.gStart) % clip.length) + clip.length) % clip.length);
+      }
       this.halt();
-      this.play(beat);
+      this.play(beat, { keepSession: true });
+      for (const [id, local] of phase) this.session.get(id).playing.gStart = -local;
+      for (const s of this.session.values()) if (s.queued) s.queued.gAt = 0;
     } else {
       this.position = beat;
       this.applyStatic();
@@ -162,7 +174,7 @@ export class Transport {
   }
   stopTrack(trackId) {
     const s = this.sess(trackId);
-    if (!this.playing) { s.playing = null; s.queued = null; s.follow = false; this.emit("session"); return; }
+    if (!this.playing) { s.playing = null; s.queued = null; this.emit("session"); return; } // nothing plays: nothing to stop
     s.queued = { scene: -1, clipId: null, gAt: this.quantizedG() };
     this.emit("session");
   }

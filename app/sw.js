@@ -1,7 +1,7 @@
 // minidaw's service worker: the app works offline once loaded. The app shell is cached at install; everything else
 // in precache.json (the instruments, their editors) right after, in the background. Requests are answered from the
 // cache first, then the network (and cached). A new VERSION (scripts/gen_precache.mjs) replaces the caches.
-const VERSION = "2a41e244362f";
+const VERSION = "e694096a9a34";
 const CACHE = "minidaw-" + VERSION;
 const SHELL = ["./", "index.html", "css/app.css", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "precache.json"];
 

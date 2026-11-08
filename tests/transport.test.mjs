@@ -111,6 +111,52 @@ console.log("automation");
   check(vs.length > 0 && vs.every((v) => near(v, 0.25)), "a clip envelope wins over the track's lane: " + JSON.stringify(vs.slice(0, 5)));
 }
 
+console.log("the arrangement comes back");
+{
+  const { p, t, events, tr, ctx } = rig();
+  const a = newMidiClip(p, t, 4), sc = newMidiClip(p, t, 4);
+  a.notes.push({ p: 50, t: 0, d: 0.5, v: 100 });
+  sc.notes.push({ p: 72, t: 0, d: 0.5, v: 100 }, { p: 74, t: 2, d: 0.5, v: 100 });
+  t.arrangement.push({ id: "a", clipId: a.id, start: 0, length: 16, offset: 0 });
+  t.slots[0] = sc.id;
+  tr.offline = false;
+  // a session clip took the track; stop, then play: the arrangement plays again
+  tr.launch(t.id, 0);
+  clearInterval(tr.timer);
+  for (let i = 0; i < 8; i++) tr.step();
+  check(tr.session.get(t.id).follow === false, "a launched clip takes the track off the arrangement");
+  tr.stop();
+  check(tr.session.get(t.id).follow === true, "stopping puts it back on the arrangement");
+  // a track stopped in the session while the transport is stopped stays on the arrangement
+  tr.stopTrack(t.id);
+  events.length = 0;
+  tr.play(0);
+  clearInterval(tr.timer);
+  for (let i = 0; i < 4; i++) tr.step();
+  check(events.some((e) => e.k === "on" && e.n === 50), "■ while stopped doesn't silence the arrangement");
+  // a left-over override (no clip playing) is cleared by Play
+  tr.stop();
+  tr.sess(t.id).follow = false;
+  events.length = 0;
+  tr.play(0);
+  clearInterval(tr.timer);
+  for (let i = 0; i < 4; i++) tr.step();
+  check(events.some((e) => e.k === "on" && e.n === 50), "Play from a stop plays the arrangement");
+  // seeking while a session clip plays keeps its place in the clip
+  tr.stop();
+  tr.launch(t.id, 0);
+  clearInterval(tr.timer);
+  for (let i = 0; i < 9; i++) tr.step(); // 2.25 beats into the clip
+  ctx.currentTime = tr.segments[0].t0 + 2.25 * 0.5;
+  tr.seek(8);
+  clearInterval(tr.timer);
+  events.length = 0;
+  for (let i = 0; i < 8; i++) tr.step();
+  const ons = events.filter((e) => e.k === "on").map((e) => e.n);
+  check(tr.session.get(t.id).playing && ons[0] === 72 && !ons.includes(50), "a seek keeps the session clip going from its place: " + JSON.stringify(ons));
+  ctx.currentTime = 0;
+}
+
 console.log("count-in");
 {
   const { p, t, events, tr } = rig();

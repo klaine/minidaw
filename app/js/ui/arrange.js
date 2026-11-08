@@ -569,8 +569,12 @@ export class ArrangeView {
         this.drawClip(c, clip, pl, x0, y + 2, x1 - x0, r.h - 5, r.track, this.selPl === pl.id || (store.ui.selClip === clip.id && !this.selPl), off);
       }
       if (off) {
-        c.fillStyle = "rgba(20,20,24,0.45)";
+        c.fillStyle = "rgba(20,20,24,0.55)";
         c.fillRect(0, y, w, r.h - 1);
+        c.fillStyle = "#ffb03a";
+        c.font = "600 12px -apple-system, system-ui, sans-serif";
+        const msg = (s && s.playing ? "Playing a session clip" : "Session clip stopped") + " · tap → Arrangement (top bar) to hear the arrangement";
+        c.fillText(msg, 10, y + r.h / 2 + 4);
       }
       const ar = app.recording.audioRegion(r.track.id);
       if (ar && ar.end > ar.start) { // audio being recorded

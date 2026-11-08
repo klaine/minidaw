@@ -1,0 +1,12 @@
+[submodule "vendor/crest"]
+	path = vendor/crest
+	url = https://github.com/klaine/crest
+[submodule "vendor/amino"]
+	path = vendor/amino
+	url = https://github.com/klaine/amino
+[submodule "vendor/bizar"]
+	path = vendor/bizar
+	url = https://github.com/klaine/bizar
+[submodule "vendor/pro-8000-vst"]
+	path = vendor/pro-8000-vst
+	url = https://github.com/klaine/pro-8000-vst

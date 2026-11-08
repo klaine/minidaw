@@ -8,7 +8,7 @@ import { laneChoices, DRUM_BASE_NOTE } from "../model.js";
 import { metaSync } from "../audio/instruments.js";
 import { roundRect, shade } from "./arrange.js";
 
-const KEYS_W = 48, RULER_H = 22, LANE_H = 84, GAP = 6;
+const KEYS_W = 48, RULER_H = 22, GAP = 6;
 const GRIDS = [[1, "1/4"], [0.5, "1/8"], [0.25, "1/16"], [0.125, "1/32"], [1 / 3, "1/4T"], [1 / 6, "1/8T"], [1 / 12, "1/16T"]];
 
 export class PianoRoll {
@@ -41,7 +41,8 @@ export class PianoRoll {
   get t() { return this.store.track(this.trackId); }
   get grid() { return this.store.ui.grid || 0.25; }
   get gridTop() { return RULER_H; }
-  get gridBottom() { return this.surf.h - LANE_H - GAP; }
+  get laneH() { return Math.round(Math.max(44, Math.min(84, (this.surf.h || 300) * 0.24))); }
+  get gridBottom() { return this.surf.h - this.laneH - GAP; }
   bx(b) { return KEYS_W + (b - this.x0) * this.ppb; }
   xb(x) { return this.x0 + (x - KEYS_W) / this.ppb; }
   py(p) { return this.gridTop + (this.top - p) * this.rowH; }
@@ -55,8 +56,14 @@ export class PianoRoll {
     if (!clip || !this.surf.w) { if (clip) setTimeout(() => this.fit(), 50); return; }
     this.ppb = clamp((this.surf.w - KEYS_W - 16) / Math.max(1, clip.length), 8, 400);
     this.x0 = 0;
-    if (this.drums) this.rowH = Math.max(12, Math.min(30, (this.gridBottom - this.gridTop) / 16));
-    else if (clip.notes.length) {
+    if (this.drums) {
+      this.rowH = Math.max(14, Math.min(30, (this.gridBottom - this.gridTop) / 16));
+      // the pads in use in view, from the lowest
+      const used = clip.notes.map((n) => n.p).filter((p) => p >= DRUM_BASE_NOTE && p < DRUM_BASE_NOTE + 16);
+      const rows = Math.floor(this.rowsVisible());
+      const lo = used.length ? Math.min(...used) : DRUM_BASE_NOTE, hi = used.length ? Math.max(...used) : DRUM_BASE_NOTE + 15;
+      this.top = Math.min(DRUM_BASE_NOTE + 15, hi - lo + 1 <= rows ? Math.max(hi, lo + rows - 1) : lo + rows - 1);
+    } else if (clip.notes.length) {
       const ps = clip.notes.map((n) => n.p);
       const mid = (Math.max(...ps) + Math.min(...ps)) / 2;
       this.top = Math.min(127, Math.round(mid + this.rowsVisible() / 2));
@@ -156,7 +163,7 @@ export class PianoRoll {
 
   // ---- gestures ----
   region(pos) {
-    if (pos.y >= this.surf.h - LANE_H) return "lane";
+    if (pos.y >= this.surf.h - this.laneH) return "lane";
     if (pos.y < RULER_H) return "ruler";
     if (pos.x < KEYS_W) return "keys";
     if (pos.y > this.gridBottom) return "gap";
@@ -333,7 +340,7 @@ export class PianoRoll {
   setVel(v) { this.store.update(() => { for (const n of this.sel) n.v = v; }, "notes"); this.newVel = v; this.surf.draw(); }
 
   // ---- the lane ----
-  laneTop() { return this.surf.h - LANE_H + 6; }
+  laneTop() { return this.surf.h - this.laneH + 6; }
   laneBottom() { return this.surf.h - 6; }
   laneV(y) { return clamp(1 - (y - this.laneTop()) / (this.laneBottom() - this.laneTop()), 0, 1); }
   laneY(v) { return this.laneTop() + (1 - v) * (this.laneBottom() - this.laneTop()); }
@@ -503,17 +510,17 @@ export class PianoRoll {
     const ph = this.playheadLocal();
     if (ph !== null) { c.fillStyle = "#ffd84a"; c.fillRect(Math.round(this.bx(ph)), 0, 1.5, gb); }
     // the lane
-    const lt = this.surf.h - LANE_H;
+    const lt = this.surf.h - this.laneH;
     c.fillStyle = "#18191c";
-    c.fillRect(0, lt - GAP, w, LANE_H + GAP);
+    c.fillRect(0, lt - GAP, w, this.laneH + GAP);
     c.fillStyle = "#222328";
-    c.fillRect(KEYS_W, lt, w - KEYS_W, LANE_H);
+    c.fillRect(KEYS_W, lt, w - KEYS_W, this.laneH);
     c.fillStyle = "#8b8f98";
     c.font = "10px -apple-system, system-ui, sans-serif";
     const laneName = this.laneKey === "vel" ? "Vel" : "Env";
     c.fillText(laneName, 6, lt + 14);
     c.save();
-    c.beginPath(); c.rect(KEYS_W, lt, w - KEYS_W, LANE_H); c.clip();
+    c.beginPath(); c.rect(KEYS_W, lt, w - KEYS_W, this.laneH); c.clip();
     if (this.laneKey === "vel") {
       for (const n of clip.notes) {
         const x = this.bx(n.t);
@@ -525,7 +532,7 @@ export class PianoRoll {
       }
     } else {
       const pts = this.envPts(false);
-      if (!pts.length) { c.fillStyle = "#5f626a"; c.fillText("Tap or drag to draw this envelope; it plays with the clip", KEYS_W + 8, lt + LANE_H / 2 + 4); }
+      if (!pts.length) { c.fillStyle = "#5f626a"; c.fillText("Tap or drag to draw this envelope; it plays with the clip", KEYS_W + 8, lt + this.laneH / 2 + 4); }
       else {
         c.strokeStyle = col; c.lineWidth = 2;
         c.beginPath();
@@ -538,7 +545,7 @@ export class PianoRoll {
         c.lineWidth = 1;
       }
     }
-    if (ex < w) { c.fillStyle = "rgba(0,0,0,0.38)"; c.fillRect(ex, lt, w - ex, LANE_H); }
+    if (ex < w) { c.fillStyle = "rgba(0,0,0,0.38)"; c.fillRect(ex, lt, w - ex, this.laneH); }
     c.restore();
   }
 

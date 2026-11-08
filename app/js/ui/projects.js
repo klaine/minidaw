@@ -164,5 +164,6 @@ export function settingsSheet(app) {
     h("p", {}, "Computer keyboard: A W S E D F T G Y H U J K O L P plays notes, Z / X shifts the octave, Space plays and stops, Tab switches Arrange and Session, ⌘Z undoes."),
     h("h3", {}, "Instruments"),
     h("p", {}, "Crest, Amino, Bizar and PRO-8000 V are the instruments' own engines and editors, built from their repositories. Each MIDI track runs its own instance: tap Edit in the device panel for the full editor."),
+    h("p", {}, "Crest, Amino and Bizar follow the song's tempo by themselves. PRO-8000 V gets MIDI clock while playing: set its clock source to MIDI in its editor (System) for its arpeggiator and sequencer to follow."),
     h("p", { class: "dim" }, "Projects and samples are kept in this browser's storage. Save a project as a file to move it to another device.")), { wide: true });
 }

@@ -346,6 +346,9 @@ function computerKeys(k) {
   return i >= 0 && k.length === 1 ? i : null;
 }
 
+// Safari ignores user-scalable=no: its page pinch would fight the editors' own pinch zoom
+for (const ev of ["gesturestart", "gesturechange"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+
 const app = new App();
 window.minidaw = app;
 // the instruments' editors (iframes) find their engine through this

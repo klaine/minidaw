@@ -60,6 +60,7 @@ class P8Processor extends AudioWorkletProcessor {
         this.held.clear();
         e.send([0xb0, 64, 0]);
         e.send([0xb0, 123, 0]);
+        e.send([0xfc]); // MIDI clock: Stop
         break;
       case "flush": this.port.postMessage({ t: "flushed", id: d.id }); break;
       case "send": this.send(d.m); break;

@@ -150,4 +150,5 @@ done
 
 echo "== meta"
 node scripts/gen_meta.mjs $WHICH
+node scripts/gen_precache.mjs   # the service worker's list and version
 du -sh "$OUT"/* | sed 's/^/   /'

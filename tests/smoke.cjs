@@ -1,7 +1,7 @@
 // node tests/smoke.cjs [url] [outdir]: start the app in Chromium at an iPad's size, play the demo, try the views.
 const { chromium } = require("playwright");
 const url = process.argv[2] || "http://localhost:8765/?nosw";
-const out = process.argv[3] || "/tmp/claude-0/shots";
+const out = process.argv[3] || "test-results";
 require("fs").mkdirSync(out, { recursive: true });
 (async () => {
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });

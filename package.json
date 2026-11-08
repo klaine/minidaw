@@ -1,0 +1,14 @@
+{
+  "name": "minidaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small DAW for the browser and the iPad, with Crest, Amino, Bizar and PRO-8000 V built in.",
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server -d app 8765",
+    "test": "node tests/worklets.test.mjs && node tests/transport.test.mjs",
+    "test:browser": "node tests/smoke.cjs",
+    "build:instruments": "sh scripts/build_instruments.sh",
+    "precache": "node scripts/gen_precache.mjs"
+  }
+}

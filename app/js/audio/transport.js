@@ -257,11 +257,18 @@ export class Transport {
       }
       this.fresh.delete(track.id);
       this.automate(track, ch, g0, s0, len, t0, spb, s);
+      if (ch.instrument && ch.instrument.wantsClock) this.clock(ch.instrument, g0, len, t0, spb);
     }
     if (p.metronome && !this.offline) {
       const sig = p.sig || 4;
       for (let b = Math.ceil(s0 - EPS); b < s0 + len - EPS; b++) this.engine.click(t0 + (b - s0) * spb, b % sig === 0);
     }
+  }
+
+  /** MIDI clock (24 per beat, Start at the first) for instruments that follow it */
+  clock(inst, g0, len, t0, spb) {
+    if (g0 < EPS) inst.midi([0xfa], t0);
+    for (let k = Math.ceil(g0 * 24 - EPS); k < (g0 + len) * 24 - EPS; k++) inst.midi([0xf8], t0 + (k / 24 - g0) * spb);
   }
 
   /** Clip content from clip-local beat `local` for `len` beats, starting at time t */

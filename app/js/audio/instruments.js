@@ -185,6 +185,7 @@ const b64 = {
 };
 
 class P8Instrument extends WorkletInstrument {
+  get wantsClock() { return true; } // MIDI clock while playing: the firmware follows it when its clock source is MIDI
   setNorm(key, v, time = 0) {
     const p = this.params.get(key);
     if (!p) return;

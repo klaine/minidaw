@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server -d app 8765",
-    "test": "node tests/worklets.test.mjs && node tests/transport.test.mjs && node tests/midifile.test.mjs",
+    "test": "node tests/worklets.test.mjs && node tests/transport.test.mjs && node tests/midifile.test.mjs && node tests/store.test.mjs",
     "test:browser": "node tests/smoke.cjs",
     "build:instruments": "sh scripts/build_instruments.sh",
-    "precache": "node scripts/gen_precache.mjs"
+    "precache": "node scripts/gen_precache.mjs",
+    "test:e2e": "node tests/e2e/run.cjs"
   }
 }

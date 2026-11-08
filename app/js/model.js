@@ -96,7 +96,7 @@ export const BUILTIN_KIT = [
 export function defaultDrumState() {
   return {
     pads: BUILTIN_KIT.map(([name, id], i) => ({
-      name, sample: "builtin:" + id, gain: 0.8, pan: 0, pitch: 0, decay: 1, start: 0, reverse: false,
+      name, sample: "builtin:" + id, gain: 0.8, pan: 0, pitch: 0, decay: 1, start: 0, end: 1, reverse: false,
       choke: i === 2 || i === 3 ? 1 : 0, mute: false,
     })),
   };

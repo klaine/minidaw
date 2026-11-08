@@ -233,10 +233,18 @@ canvas { display: block; }
 .dev-ch-knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 2px; justify-items: center; align-items: start; }
 .dev-audio p { max-width: 640px; }
 .drum { display: flex; gap: 12px; min-height: 0; height: 100%; }
-.drum-pads { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 5px; width: min(320px, 44vw); aspect-ratio: 1; max-height: 100%; flex: none; }
+.drum-pads { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 5px; width: min(300px, 40vw); aspect-ratio: 1; max-height: calc(100% - 22px); flex: 1 1 auto; }
 .drum-edit { flex: 1; min-width: 0; }
-.drum-pad-title { font-weight: 700; }
-.drum-sample { min-width: 140px; }
+.drum-left { display: flex; flex-direction: column; gap: 6px; flex: none; min-height: 0; }
+.drum-hint { font-size: 10px; max-width: min(320px, 44vw); }
+.drum-pad-title { font-weight: 700; border: 0; background: transparent; color: var(--ink); padding: 4px 6px; border-radius: 6px; min-height: 32px; }
+.drum-pad-title:active { background: var(--card2); }
+.drum-sample { min-width: 150px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.drum-edit { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.drum-row { margin-bottom: 0; }
+.drum-wave-box { position: relative; height: 96px; flex: none; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.drum-wave { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.drum-knobs { gap: 4px; }
 .pad { --hit: 0; border-radius: 8px; background: color-mix(in srgb, var(--tc) calc(12% + var(--hit) * 70%), #2b2d32); border: 1px solid #ffffff12; padding: 5px; display: flex; flex-direction: column; justify-content: space-between; touch-action: none; overflow: hidden; min-height: 0; }
 .pad.sel { box-shadow: 0 0 0 2px #fff inset; }
 .pad.muted { opacity: 0.4; }

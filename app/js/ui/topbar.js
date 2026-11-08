@@ -124,7 +124,7 @@ export class Topbar {
   update() {
     const app = this.app, store = app.store, p = store.project, tr = app.transport;
     this.name.textContent = p.name + (store.ui.dirty ? " •" : "");
-    this.undoBtn.disabled = !store.undoStack.length;
+    this.undoBtn.disabled = !store.undoStack.length && !(store.pending && !store.gesture);
     this.redoBtn.disabled = !store.redoStack.length;
     this.playBtn.classList.toggle("on", tr.playing);
     const rec = app.recording;
@@ -137,6 +137,7 @@ export class Topbar {
     this.bpm.set(p.bpm);
     this.views.set(store.ui.view);
     this.backBtn.hidden = !tr.overridden;
+    this.captureBtn.disabled = !rec.canCapture;
   }
 
   frame() {

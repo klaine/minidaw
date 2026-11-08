@@ -23,8 +23,13 @@ bridged to the track it plays on.
   clips show one row per pad.
 - **Automation.** Arrangement lanes per track cover volume, pan, both sends and any instrument parameter. Clip
   envelopes, drawn in the piano roll, play with the clip and take precedence over the track's lane.
-- **Drum Rack.** 16 pads on notes C1 to D#2. Each pad has a sample, level, pan, pitch, start, decay, reverse and
-  choke groups. The built-in kit is synthesized in the app, so no third-party samples ship.
+- **Drum Rack.** It has 16 pads on notes C1 to D#2.
+  - **Selecting a pad.** Tap a pad to play it and edit it below: its sample, a waveform with start and end markers
+    to trim it, and its level, pan, pitch, start, end and decay. Reverse and choke groups are there too.
+  - **More options.** Long press a pad to choose, import, rename, copy, paste or reset it. Drop an audio file on a
+    pad to load it there.
+  - **From a clip.** In a Drum Rack clip, tap a row's name and then Pad sounds to open that pad's editor.
+  - The built-in kit is synthesized in the app, so no third-party samples ship.
 - **Audio tracks.** Built-in drum loops or your own files (WAV, AIFF, MP3, M4A and more). Warp resamples a clip to the
   song's tempo, so its pitch follows the tempo.
 - **MIDI files.** Drop a `.mid` file on an instrument track's lane, a session slot or a track header, or use Import
@@ -132,7 +137,22 @@ changing anything in `app/`.
 ```sh
 npm test               # the four engines in a stand-in AudioWorkletGlobalScope (start, timing, stop), the transport, MIDI files
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
+npm run test:e2e       # the user flows (below)
 ```
+
+`tests/e2e/run.cjs` is a set of user flows, run in Chromium at an iPad's size with touch. Each starts from a fresh
+browser profile and fails on any page error. The flows cover:
+- **Playing and editing:** the first start; a beat drawn from scratch; drum pads (choose, trim, tune, import, drop,
+  copy, and a trimmed pad heard shorter); a synth's presets, knobs and keys; an instrument's own editor.
+- **Session, mixing and recording:** session scenes; solo, mute and faders; recording with a count-in; a session
+  loop; Capture.
+- **Files and project:** MIDI files; an audio loop; automation; a WAV export; a reload; undo and redo; portrait
+  layout; starting offline.
+
+They act only through the interface: taps, drags, long presses, keys, the file chooser, downloads and file drops.
+They check what a person would notice: sound at the app's meters, the screen, what survives a reload, and exported
+files decoded in node. Changing the app to drop a feature (trim, or tracks returning to the arrangement) makes the
+matching flow fail.
 
 ## Limits
 

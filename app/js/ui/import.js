@@ -198,11 +198,26 @@ async function importAudio(app, files, target) {
   }
 }
 
+/** An audio file onto a Drum Rack pad (its trim back to the whole sample) */
+async function audioToPad(app, track, i, file) {
+  let s;
+  try { toast("Loading " + file.name + "…"); s = await app.samples.importFile(file, app.ctx); }
+  catch (e) { toast(file.name + " couldn't be decoded: " + (e.message || e), 4000); return; }
+  app.store.update((p) => {
+    const pad = p.tracks.find((x) => x.id === track.id).instrument.state.pads[i];
+    Object.assign(pad, { sample: s.id, name: s.name.slice(0, 14), start: 0, end: 1, reverse: false });
+  }, "pad");
+  app.store.select({ selTrack: track.id, panel: "device", drumPad: i });
+  toast(`${s.name} on pad ${i + 1}`);
+}
+
 /** Where a drop lands: {track, start} in the arrangement, {track, scene} in the session, {track} on a header */
 function dropTarget(app, x, y) {
   const el = document.elementFromPoint(x, y);
   if (!el) return null;
   const store = app.store;
+  const pad = el.closest("[data-pad][data-track]");
+  if (pad) return { track: store.track(pad.dataset.track), pad: Number(pad.dataset.pad) };
   if (el.closest(".arr-canvas")) return app.views.arrange.dropTarget(x, y);
   const slot = el.closest("[data-scene][data-track]");
   if (slot) return { track: store.track(slot.dataset.track), scene: Number(slot.dataset.scene) };
@@ -222,6 +237,7 @@ export async function dropFiles(app, files, x, y) {
   const target = dropTarget(app, x, y);
   const midi = files.filter(isMidiFile), audio = files.filter((f) => !isMidiFile(f) && isAudioFile(f));
   if (!midi.length && !audio.length) { toast("Drop MIDI files (.mid) or audio files here"); return; }
+  if (target && target.pad !== undefined && audio.length) { await audioToPad(app, target.track, target.pad, audio[0]); return; }
   if (midi.length) {
     if (target && target.track && target.track.type === "midi") await importMidiToTrack(app, target.track.id, { start: target.start, scene: target.scene }, midi);
     else await importMidiAsTracks(app, midi);

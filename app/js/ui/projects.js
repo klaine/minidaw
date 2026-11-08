@@ -162,6 +162,8 @@ export function settingsSheet(app) {
     h("p", {}, "Arm a track (●) and press Record: from a stop it counts in first (long press Record for the count-in, click, quantize, replace or overdub, and the session's clip length). Notes appear in the clip as you play, and a whole take is one undo."),
     h("p", {}, "In the session, tap an armed track's empty slot to record a loop there from the next bar; tap it again to stop, or set a fixed length and it stops by itself and plays on. Armed tracks with a playing clip overdub into it."),
     h("p", {}, "Capture (next to Record) turns what you just played into a clip, even when nothing was recording. Audio tracks record the microphone or audio input: arming one shows its level, Monitor plays it through. Export → Record the output captures what you hear."),
+    h("h3", {}, "Drum Rack"),
+    h("p", {}, "Select the Drums track, then Device: tap a pad to play it and edit it. The waveform's markers trim its start and end, and the knobs set level, pan, pitch and decay. Sample ▾ picks a built-in sound, Import file… loads your own. Long press a pad for more, or drop an audio file on it. From a drum clip, tap a row's name, then Pad sounds."),
     h("h3", {}, "MIDI and audio files"),
     h("p", {}, "Drop a MIDI file on an instrument track (its lane, a session slot or its header), or use Import MIDI in the device panel. Dropped elsewhere, or from Add track → Tracks from a MIDI file, it becomes new tracks, one per part. On a Drum Rack, General MIDI drums land on the pads. Audio files dropped on an audio track become clips there. Long press a MIDI clip to save it as a .mid file."),
     h("h3", {}, "Keys"),

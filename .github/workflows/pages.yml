@@ -31,9 +31,24 @@ jobs:
           node scripts/gen_precache.mjs
           git diff --exit-code app/precache.json app/sw.js || (echo "run: node scripts/gen_precache.mjs" && exit 1)
 
+  user-flows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-flow-failures
+          path: test-results/e2e
+
   deploy:
     if: github.event_name != 'pull_request'
-    needs: test
+    needs: [test, user-flows]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

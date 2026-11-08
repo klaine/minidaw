@@ -89,6 +89,7 @@ export class PianoRoll {
       btn("−12", () => this.transpose(-12), "Octave down"), btn("−1", () => this.transpose(-1)), btn("+1", () => this.transpose(1)), btn("+12", () => this.transpose(12), "Octave up"),
       btn("⌫", () => this.deleteSel(), "Delete the selected notes"),
       btn("Fit", () => this.fit(), "Show the whole clip"),
+      this.drums ? btn("Pad sounds ▸", () => this.store.select({ panel: "device" }), "The pads' samples: choose, trim, tune (tap a row's name first to pick its pad)", "primary") : null,
       h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Lane"), lane,
         btn("Clear", () => { if (this.laneKey === "vel") return; this.store.update(() => { delete this.clip.env[this.laneKey]; }, "notes"); this.surf.draw(); }, "Remove this envelope")),
     );
@@ -175,7 +176,11 @@ export class PianoRoll {
     const store = this.store;
     gestures(this.canvas, {
       press: (pos) => {
-        if (this.region(pos) === "keys") { const p = this.yp(pos.y); this.audition(p, 100); }
+        if (this.region(pos) === "keys") {
+          const p = this.yp(pos.y);
+          this.audition(p, 100);
+          if (this.drums && p >= DRUM_BASE_NOTE && p < DRUM_BASE_NOTE + 16) store.ui.drumPad = p - DRUM_BASE_NOTE; // the pad "Pad sounds" opens
+        }
       },
       tap: (pos) => {
         const r = this.region(pos);

@@ -1,4 +1,4 @@
-// The Drum Rack: 16 pads (notes 36-51, C1 up, as Ableton's), each a sample with level, pan, pitch, start, decay,
+// The Drum Rack: 16 pads (notes 36-51, C1 up, as Ableton's), each a sample with level, pan, pitch, start, end, decay,
 // reverse and a choke group. Hits are sample players scheduled at their time, so it plays the same live and offline.
 import { DRUM_BASE_NOTE } from "../model.js";
 
@@ -10,6 +10,13 @@ function reverseOf(b) {
     reversed.set(b, r);
   }
   return reversed.get(b);
+}
+
+/** A pad's trim, as fractions of its sample: start below end, at least 0.5 % apart */
+export function padRange(pad) {
+  const start = Math.min(0.995, Math.max(0, pad.start || 0));
+  const end = Math.min(1, Math.max(start + 0.005, pad.end ?? 1));
+  return { start, end };
 }
 
 export class DrumRack {
@@ -49,9 +56,11 @@ export class DrumRack {
     const pan = ctx.createStereoPanner();
     pan.pan.value = pad.pan || 0;
     src.connect(g).connect(pan).connect(this.output);
-    const offset = Math.min(buffer.duration * 0.95, (pad.start || 0) * buffer.duration);
+    // the trimmed part of the sample: start and end are fractions of it (of the reversed one when reversed)
+    const { start, end } = padRange(pad);
+    const offset = start * buffer.duration;
     const rate = src.playbackRate.value;
-    const full = (buffer.duration - offset) / rate;
+    const full = Math.max(0.005, (end - start) * buffer.duration) / rate;
     const decay = pad.decay ?? 1;
     const v = { src, g, pan, choke: pad.choke || 0, start: t, end: t + full };
     if (decay < 0.999) {
@@ -59,6 +68,9 @@ export class DrumRack {
       g.gain.setValueAtTime(level, t + hold);
       g.gain.linearRampToValueAtTime(0, t + hold + 0.04);
       v.end = Math.min(v.end, t + hold + 0.05);
+    } else if (end < 0.999) { // a trimmed end fades out over 3 ms: no click
+      g.gain.setValueAtTime(level, Math.max(t, v.end - 0.003));
+      g.gain.linearRampToValueAtTime(0, v.end);
     }
     src.start(t, offset);
     src.stop(v.end + 0.01);

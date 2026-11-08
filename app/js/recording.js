@@ -87,6 +87,7 @@ export class Recording {
       const ss = store.ui.selSlot, t = store.track(ss.trackId);
       if (t && t.mixer.arm && !t.slots[ss.scene]) slot = ss;
     }
+    store.settle(); // edits before the take are their own steps
     this.snap = store.snapshot();
     store.locked = true;
     this.takes.clear(); this.held.clear(); this.taken.clear(); this.leftovers.clear();

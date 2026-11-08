@@ -28,6 +28,7 @@ export class Store extends Emitter {
     this.undoStack = [];
     this.redoStack = [];
     this.pending = null;
+    this.gesture = false;
     this.ui.selTrack = p.tracks[0] ? p.tracks[0].id : null;
     this.ui.selClip = null;
     this.ui.selSlot = null;
@@ -37,25 +38,39 @@ export class Store extends Emitter {
 
   snapshot() { return deepCopy(this.project); }
 
-  /** A change with an undo step: fn(project) edits in place */
+  /**
+   * A change with an undo step: fn(project) edits in place. Live edits just before it (a knob's or a fader's drag,
+   * which ends with an update) are part of the same step, undone from before the first of them.
+   */
   update(fn, reason = "edit") {
-    const before = this.pending ? null : this.snapshot();
+    const before = this.pending || this.locked ? null : this.snapshot();
     const r = fn(this.project);
     if (before) this.pushUndo(before);
+    else if (this.pending && !this.gesture) { this.pushUndo(this.pending); this.pending = null; }
     this.touch(reason);
     return r;
   }
 
   /** Start a gesture (a drag): its live() changes become one undo step at commit() */
-  begin() { if (!this.pending) this.pending = this.snapshot(); }
-  live(fn, reason = "edit") { const r = fn(this.project); this.touch(reason, true); return r; }
+  begin() { if (!this.pending) this.pending = this.snapshot(); this.gesture = true; }
+  /** A change while something is being dragged: no undo step yet (the state before it is kept for the step) */
+  live(fn, reason = "edit") {
+    if (!this.pending && !this.locked) this.pending = this.snapshot();
+    const r = fn(this.project);
+    this.touch(reason, true);
+    return r;
+  }
   commit(reason = "edit") {
-    if (this.pending) { this.pushUndo(this.pending); this.pending = null; }
+    if (this.pending && !this.locked) this.pushUndo(this.pending);
+    this.pending = null;
+    this.gesture = false;
     this.touch(reason);
   }
   cancel() {
-    if (this.pending) { this.project = this.pending; this.pending = null; this.touch("undo"); }
+    if (this.pending) { this.project = this.pending; this.pending = null; this.gesture = false; this.touch("undo"); }
   }
+  /** Live edits that weren't closed by an update or a commit become their step now */
+  settle() { if (this.pending && !this.gesture && !this.locked) { this.pushUndo(this.pending); this.pending = null; } }
 
   pushUndo(snap) {
     this.undoStack.push(snap);
@@ -70,7 +85,9 @@ export class Store extends Emitter {
   }
 
   undo() {
-    if (this.locked || !this.undoStack.length) return false; // a recording in progress is one step, taken at its end
+    if (this.locked) return false; // a recording in progress is one step, taken at its end
+    this.settle();
+    if (!this.undoStack.length) return false;
     this.redoStack.push(this.snapshot());
     this.project = this.undoStack.pop();
     this.fixSelection();
@@ -78,6 +95,7 @@ export class Store extends Emitter {
     return true;
   }
   redo() {
+    this.settle();
     if (this.locked || !this.redoStack.length) return false;
     this.undoStack.push(this.snapshot());
     this.project = this.redoStack.pop();

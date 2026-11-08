@@ -1,8 +1,8 @@
 // The Device panel for the selected track: its instrument (presets, quick knobs, the full editor), its Drum Rack (pads
 // and the selected pad's sample and settings) or its audio clips, and its channel (volume, pan, sends, EQ).
-import { h, fmtDb, UNITY, uid } from "../util.js";
-import { knob, toggle, menu, toast, select } from "./controls.js";
-import { gestures } from "./gestures.js";
+import { h, fmtDb, UNITY, uid, pickFiles } from "../util.js";
+import { knob, toggle, menu, toast, select, prompt } from "./controls.js";
+import { gestures, Surface } from "./gestures.js";
 import { INSTRUMENT_KINDS, newAudioClip, guessBpm, defaultDrumState, DRUM_BASE_NOTE } from "../model.js";
 import { metaSync, loadMeta } from "../audio/instruments.js";
 import { presetBrowser, pickSample } from "./browser.js";
@@ -191,21 +191,35 @@ export function channelBox(app, t) {
 }
 
 // ---- the Drum Rack ----
+// The pads on the left (tap to play and select, long press for the pad's menu, drop an audio file on one to load it),
+// the selected pad on the right: its sample (choose one, import a file), a waveform to trim it (drag the start and
+// end markers; tap it to hear the pad), and its level, pan, pitch, start, end and decay.
 class DrumDevice {
   constructor(app, track, inst) {
     this.app = app;
     this.trackId = track.id;
     this.inst = inst;
-    this.sel = 0;
+    this.sel = clampPad(app.store.ui.drumPad);
     this.flash = new Float32Array(16);
     this.pads = h("div", { class: "drum-pads" });
     this.editor = h("div", { class: "drum-edit" });
-    this.el = h("div", { class: "drum" }, this.pads, this.editor);
+    this.el = h("div", { class: "drum" },
+      h("div", { class: "drum-left" }, this.pads, h("div", { class: "dim drum-hint" }, "Tap a pad to play and edit it · long press for more · drop an audio file on a pad")),
+      this.editor);
     if (inst) inst.onHit = (i) => { this.flash[i] = 1; };
     this.refresh();
   }
   get t() { return this.app.store.track(this.trackId); }
   get state() { return this.t.instrument.state; }
+  get pad() { return this.state.pads[this.sel]; }
+
+  select(i) {
+    if (this.sel === i) return;
+    this.sel = i;
+    this.app.store.ui.drumPad = i;
+    this.padEls.forEach((p, k) => p.classList.toggle("sel", k === i));
+    this.refreshEditor();
+  }
 
   refresh() {
     const t = this.t;
@@ -217,17 +231,26 @@ class DrumDevice {
       for (let col = 0; col < 4; col++) {
         const i = row * 4 + col;
         const pad = pads[i];
-        const el = h("div", { class: "pad" + (i === this.sel ? " sel" : "") + (pad.mute ? " muted" : ""), style: { "--tc": t.color } },
+        const el = h("div", { class: "pad" + (i === this.sel ? " sel" : "") + (pad.mute ? " muted" : ""), style: { "--tc": t.color },
+          dataset: { pad: i, track: t.id }, role: "button", "aria-label": `Pad ${i + 1}: ${pad.name}` },
           h("span", { class: "pad-name" }, pad.name), h("span", { class: "pad-note" }, String(i + 1)));
+        let hold = 0, down = null;
         el.addEventListener("pointerdown", (e) => {
           e.preventDefault();
+          if (e.button === 2) return;
           const r = el.getBoundingClientRect();
           const vel = Math.round(60 + 67 * Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height)));
           this.app.liveNote(true, DRUM_BASE_NOTE + i, vel, [this.t]);
-          if (this.sel !== i) { this.sel = i; this.refreshEditor(); this.padEls.forEach((p, k) => p.classList.toggle("sel", k === i)); }
+          this.select(i);
+          down = { x: e.clientX, y: e.clientY };
+          clearTimeout(hold);
+          hold = setTimeout(() => { down = null; this.padMenu(i, el); }, 520);
         });
-        el.addEventListener("pointerup", () => this.app.liveNote(false, DRUM_BASE_NOTE + i, 0, [this.t]));
-        el.addEventListener("contextmenu", (e) => e.preventDefault());
+        el.addEventListener("pointermove", (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) { clearTimeout(hold); down = null; } });
+        const up = () => { clearTimeout(hold); down = null; this.app.liveNote(false, DRUM_BASE_NOTE + i, 0, [this.t]); };
+        el.addEventListener("pointerup", up);
+        el.addEventListener("pointercancel", up);
+        el.addEventListener("contextmenu", (e) => { e.preventDefault(); clearTimeout(hold); this.select(i); this.padMenu(i, el); });
         this.padEls[i] = el;
         this.pads.append(el);
       }
@@ -235,40 +258,79 @@ class DrumDevice {
     this.refreshEditor();
   }
 
-  setPad(fn, live) {
+  setPad(fn, live, i = this.sel) {
     const store = this.app.store;
-    (live ? store.live : store.update).call(store, (p) => fn(p.tracks.find((x) => x.id === this.trackId).instrument.state.pads[this.sel]), live ? "live-pad" : "pad");
+    (live ? store.live : store.update).call(store, (p) => fn(p.tracks.find((x) => x.id === this.trackId).instrument.state.pads[i]), live ? "live-pad" : "pad");
+  }
+
+  /** A sample onto pad i (its trim back to the whole sample) */
+  async loadSample(i, s) {
+    await this.app.samples.load(s.id, this.app.ctx);
+    this.setPad((pd) => { pd.sample = s.id; pd.name = s.name.slice(0, 14); pd.start = 0; pd.end = 1; pd.reverse = false; }, false, i);
+    this.refresh();
+  }
+  async chooseSample(i) {
+    const s = await pickSample(this.app, { title: "Sample for pad " + (i + 1), kinds: ["oneshot", "loop"] });
+    if (s) await this.loadSample(i, s);
+  }
+  async importFile(i) {
+    const files = await pickFiles("audio/*,.wav,.aif,.aiff,.mp3,.m4a,.flac,.ogg,.caf");
+    if (!files.length) return;
+    try { await this.loadSample(i, await this.app.samples.importFile(files[0], this.app.ctx)); }
+    catch (e) { toast("That file couldn't be decoded: " + (e.message || e), 4000); }
+  }
+
+  padMenu(i, anchor) {
+    const app = this.app, pad = this.state.pads[i];
+    menu(anchor, [
+      { label: "Choose a sample…", onClick: () => this.chooseSample(i) },
+      { label: "Import an audio file…", onClick: () => this.importFile(i) },
+      { label: "Rename…", onClick: async () => { const n = await prompt("Pad name", pad.name); if (n) { this.setPad((pd) => { pd.name = n.slice(0, 14); }, false, i); this.refresh(); } } },
+      { label: "Copy pad", onClick: () => { app.padClipboard = JSON.parse(JSON.stringify(pad)); toast("Copied: long press another pad to paste"); } },
+      { label: "Paste pad", disabled: !app.padClipboard, onClick: () => { this.setPad((pd) => Object.assign(pd, JSON.parse(JSON.stringify(app.padClipboard))), false, i); this.refresh(); } },
+      { label: pad.mute ? "Unmute" : "Mute", onClick: () => { this.setPad((pd) => { pd.mute = !pd.mute; }, false, i); this.refresh(); } },
+      "-",
+      { label: "Reset pad", onClick: () => { const d = defaultDrumState().pads[i]; this.setPad((pd) => Object.assign(pd, d), false, i); this.refresh(); } },
+      { label: "Reset the whole kit", danger: true, onClick: () => { app.store.update((p) => { p.tracks.find((x) => x.id === this.trackId).instrument.state = defaultDrumState(); }, "pad"); this.refresh(); } },
+    ], { title: `Pad ${i + 1} · ${pad.name}` });
   }
 
   refreshEditor() {
     const app = this.app;
-    const pad = this.state.pads[this.sel];
+    const pad = this.pad;
+    if (this.wave) this.wave.dispose();
     this.editor.textContent = "";
-    const k = (label, value, def, fn, fmt, o = {}) => knob({ label, value, def, size: 42, format: fmt, onInput: (v) => this.setPad((pd) => fn(pd, v), true), onChange: (v) => this.setPad((pd) => fn(pd, v)), ...o });
-    const sampleBtn = h("button", { type: "button", class: "btn drum-sample", onclick: async () => {
-      const s = await pickSample(app, { title: "Sample for pad " + (this.sel + 1), kinds: ["oneshot", "loop"] });
-      if (!s) return;
-      this.setPad((pd) => { pd.sample = s.id; pd.name = s.name.slice(0, 14); pd.start = 0; });
-      this.refresh();
-    } }, app.samples.name(pad.sample));
-    const choke = select([{ value: 0, label: "No choke" }, { value: 1, label: "Choke 1" }, { value: 2, label: "Choke 2" }, { value: 3, label: "Choke 3" }, { value: 4, label: "Choke 4" }], pad.choke || 0, (v) => this.setPad((pd) => { pd.choke = +v; }));
+    const kn = (label, value, def, fn, fmt, o = {}) => knob({ label, value, def, size: 40, format: fmt,
+      onInput: (v) => { this.setPad((pd) => fn(pd, v), true); this.wave && this.wave.draw(); },
+      onChange: (v) => { this.setPad((pd) => fn(pd, v)); this.wave && this.wave.draw(); }, ...o });
+    const choke = select([{ value: 0, label: "No choke" }, { value: 1, label: "Choke 1" }, { value: 2, label: "Choke 2" }, { value: 3, label: "Choke 3" }, { value: 4, label: "Choke 4" }],
+      pad.choke || 0, (v) => this.setPad((pd) => { pd.choke = +v; }));
+    choke.title = "Pads in the same choke group cut each other off (an open hat closed by the closed hat)";
+    const title = h("button", { type: "button", class: "drum-pad-title", title: "Rename the pad", onclick: async () => {
+      const n = await prompt("Pad name", this.pad.name);
+      if (n) { this.setPad((pd) => { pd.name = n.slice(0, 14); }); this.refresh(); }
+    } }, `Pad ${this.sel + 1} · ${pad.name}`);
+    const canvas = h("canvas", { class: "drum-wave", "aria-label": "Waveform: drag the start and end markers to trim" });
+    this.knobs = {};
+    const range = () => { const s = this.pad.start || 0, e = this.pad.end ?? 1; return { s, e }; };
+    this.knobs.start = kn("Start", range().s, 0, (pd, v) => { pd.start = Math.min(v, (pd.end ?? 1) - 0.005); }, (v) => (v * 100).toFixed(1) + "%");
+    this.knobs.end = kn("End", range().e, 1, (pd, v) => { pd.end = Math.max(v, (pd.start || 0) + 0.005); }, (v) => (v * 100).toFixed(1) + "%");
     this.editor.append(
-      h("div", { class: "dev-row" }, h("span", { class: "drum-pad-title" }, "Pad " + (this.sel + 1)), sampleBtn,
-        toggle("Rev", pad.reverse, () => { this.setPad((pd) => { pd.reverse = !pd.reverse; }); this.refreshEditor(); }, "small"),
+      h("div", { class: "dev-row drum-row" }, title,
+        h("button", { type: "button", class: "btn small drum-sample", title: "Choose a built-in sample, or import a file", onclick: () => this.chooseSample(this.sel) }, "Sample: " + app.samples.name(pad.sample) + " ▾"),
+        h("button", { type: "button", class: "btn small", onclick: () => this.importFile(this.sel) }, "Import file…"),
+        toggle("Reverse", pad.reverse, () => { this.setPad((pd) => { pd.reverse = !pd.reverse; }); this.refreshEditor(); }, "small"),
         toggle("Mute", pad.mute, () => { this.setPad((pd) => { pd.mute = !pd.mute; }); this.refresh(); }, "small"),
         choke,
-        h("button", { type: "button", class: "btn small", title: "Import a MIDI file onto this track: General MIDI drums map onto the pads", onclick: () => importHere(app, this.t) }, "Import MIDI…"),
-        h("button", { type: "button", class: "btn small", onclick: (e) => menu(e.currentTarget, [
-          { label: "Rename pad…", onClick: async () => { const { prompt } = await import("./controls.js"); const n = await prompt("Pad name", pad.name); if (n) { this.setPad((pd) => { pd.name = n.slice(0, 14); }); this.refresh(); } } },
-          { label: "Reset this pad", onClick: () => { const d = defaultDrumState().pads[this.sel]; this.setPad((pd) => Object.assign(pd, d)); this.refresh(); } },
-          { label: "Reset the whole kit", danger: true, onClick: () => { app.store.update((p) => { p.tracks.find((x) => x.id === this.trackId).instrument.state = defaultDrumState(); }, "pad"); this.refresh(); } },
-        ]) }, "⋯")),
-      h("div", { class: "dev-knobs" },
-        k("Level", (pad.gain ?? 0.8) / 1.25, 0.64, (pd, v) => { pd.gain = v * 1.25; }, (v) => (v <= 0 ? "-∞" : (20 * Math.log10(v * 1.25)).toFixed(1) + " dB")),
-        k("Pan", ((pad.pan || 0) + 1) / 2, 0.5, (pd, v) => { pd.pan = Math.round((v * 2 - 1) * 100) / 100; }, (v) => { const x = Math.round((v * 2 - 1) * 50); return x === 0 ? "C" : x < 0 ? -x + "L" : x + "R"; }, { bipolar: true }),
-        k("Pitch", ((pad.pitch || 0) + 24) / 48, 0.5, (pd, v) => { pd.pitch = Math.round(v * 48 - 24); }, (v) => { const x = Math.round(v * 48 - 24); return (x > 0 ? "+" : "") + x + " st"; }, { bipolar: true }),
-        k("Start", (pad.start || 0) / 0.9, 0, (pd, v) => { pd.start = v * 0.9; }, (v) => Math.round(v * 90) + "%"),
-        k("Decay", pad.decay ?? 1, 1, (pd, v) => { pd.decay = v; }, (v) => (v >= 0.999 ? "Full" : Math.round(v * 100) + "%"))));
+        h("button", { type: "button", class: "btn small", "aria-label": "More for this pad", onclick: (e) => this.padMenu(this.sel, e.currentTarget) }, "⋯")),
+      h("div", { class: "drum-wave-box" }, canvas),
+      h("div", { class: "dev-knobs drum-knobs" },
+        kn("Level", (pad.gain ?? 0.8) / 1.25, 0.64, (pd, v) => { pd.gain = v * 1.25; }, (v) => (v <= 0 ? "-∞" : (20 * Math.log10(v * 1.25)).toFixed(1) + " dB")),
+        kn("Pan", ((pad.pan || 0) + 1) / 2, 0.5, (pd, v) => { pd.pan = Math.round((v * 2 - 1) * 100) / 100; }, (v) => { const x = Math.round((v * 2 - 1) * 50); return x === 0 ? "C" : x < 0 ? -x + "L" : x + "R"; }, { bipolar: true }),
+        kn("Pitch", ((pad.pitch || 0) + 24) / 48, 0.5, (pd, v) => { pd.pitch = Math.round(v * 48 - 24); }, (v) => { const x = Math.round(v * 48 - 24); return (x > 0 ? "+" : "") + x + " st"; }, { bipolar: true, step: 1 / 48 }),
+        this.knobs.start, this.knobs.end,
+        kn("Decay", pad.decay ?? 1, 1, (pd, v) => { pd.decay = v; }, (v) => (v >= 0.999 ? "Full" : Math.round(v * 100) + "%"))));
+    this.wave = new PadWave(this, canvas);
   }
 
   frame() {
@@ -280,5 +342,91 @@ class DrumDevice {
       }
     }
   }
-  dispose() { if (this.inst) this.inst.onHit = null; }
+  dispose() { if (this.inst) this.inst.onHit = null; if (this.wave) this.wave.dispose(); }
+}
+
+const clampPad = (i) => (Number.isInteger(i) && i >= 0 && i < 16 ? i : 0);
+
+/** The selected pad's sample, trimmed: drag the start (yellow) or end (white) marker; tap to hear the pad */
+class PadWave {
+  constructor(dev, canvas) {
+    this.dev = dev;
+    this.surf = new Surface(canvas, (c, w, hh) => this.paint(c, w, hh));
+    const app = dev.app;
+    let drag = null;
+    gestures(canvas, {
+      tap: () => { const i = dev.sel; app.liveNote(true, DRUM_BASE_NOTE + i, 110, [dev.t]); setTimeout(() => app.liveNote(false, DRUM_BASE_NOTE + i, 0, [dev.t]), 150); },
+      dragStart: (pos) => {
+        const { s, e } = this.range();
+        const xs = this.fx(s), xe = this.fx(e);
+        const ds = Math.abs(pos.x - xs), de = Math.abs(pos.x - xe);
+        if (Math.min(ds, de) > 36) return false;
+        app.store.begin();
+        drag = ds <= de ? "start" : "end";
+        return true;
+      },
+      dragMove: (pos) => {
+        const v = this.xf(pos.x);
+        dev.setPad((pd) => {
+          if (drag === "start") pd.start = Math.max(0, Math.min(v, (pd.end ?? 1) - 0.005));
+          else pd.end = Math.min(1, Math.max(v, (pd.start || 0) + 0.005));
+        }, true);
+        const { s, e } = this.range();
+        dev.knobs.start.set(s); dev.knobs.end.set(e);
+        this.draw();
+      },
+      dragEnd: () => { app.store.commit("pad"); drag = null; },
+    });
+    app.samples.load(dev.pad.sample, app.ctx).then(() => this.draw());
+  }
+  range() { const p = this.dev.pad; return { s: p.start || 0, e: p.end ?? 1 }; }
+  fx(f) { return 8 + f * (this.surf.w - 16); }
+  xf(x) { return Math.max(0, Math.min(1, (x - 8) / Math.max(1, this.surf.w - 16))); }
+  draw() { this.surf.draw(); }
+  paint(c, w, hh) {
+    const dev = this.dev, pad = dev.pad, app = dev.app;
+    const col = dev.t ? dev.t.color : "#ff6b5b";
+    c.fillStyle = "#18191c";
+    c.fillRect(0, 0, w, hh);
+    const peaks = app.samples.peaks(pad.sample, 1024);
+    const buf = app.samples.buffer(pad.sample);
+    if (!peaks || !buf) { c.fillStyle = "#777"; c.font = "11px -apple-system, system-ui, sans-serif"; c.fillText("Loading…", 10, hh / 2); return; }
+    const { s, e } = this.range();
+    const mid = hh / 2, amp = hh / 2 - 6;
+    for (let x = 8; x < w - 8; x++) {
+      const f = this.xf(x);
+      let i = Math.floor(f * 1023);
+      if (pad.reverse) i = 1023 - i;
+      const lo = peaks[2 * i] * amp, hi = peaks[2 * i + 1] * amp;
+      c.fillStyle = f >= s && f <= e ? col : "#3a3c42";
+      c.fillRect(x, mid - hi, 1, Math.max(1, hi - lo));
+    }
+    // the decay: the level holds, then falls (as the Drum Rack plays it)
+    const decay = pad.decay ?? 1;
+    if (decay < 0.999) {
+      const xs = this.fx(s), xe = this.fx(e);
+      const xh = xs + (xe - xs) * decay * decay;
+      c.strokeStyle = "rgba(255,255,255,0.7)";
+      c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(xs, 6); c.lineTo(xh, 6); c.lineTo(Math.min(xe, xh + Math.max(3, (0.04 / (buf.duration * (e - s))) * (xe - xs))), hh - 4); c.stroke();
+    }
+    c.fillStyle = "rgba(0,0,0,0.45)";
+    c.fillRect(0, 0, this.fx(s), hh);
+    c.fillRect(this.fx(e), 0, w - this.fx(e), hh);
+    const marker = (x, color, left) => {
+      c.fillStyle = color;
+      c.fillRect(x - 1, 0, 2.5, hh);
+      c.beginPath();
+      if (left) { c.moveTo(x, 0); c.lineTo(x + 12, 0); c.lineTo(x, 14); }
+      else { c.moveTo(x, 0); c.lineTo(x - 12, 0); c.lineTo(x, 14); }
+      c.fill();
+    };
+    marker(this.fx(s), "#ffd84a", true);
+    marker(this.fx(e), "#ffffff", false);
+    c.fillStyle = "#9a9ea8";
+    c.font = "10px -apple-system, system-ui, sans-serif";
+    const len = (e - s) * buf.duration / Math.pow(2, (pad.pitch || 0) / 12);
+    c.fillText(`${app.samples.name(pad.sample)} · ${(len * 1000).toFixed(0)} ms${pad.reverse ? " · reversed" : ""} · drag the markers to trim, tap to hear`, 12, hh - 6);
+  }
+  dispose() { this.surf.dispose(); }
 }

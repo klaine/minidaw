@@ -30,6 +30,8 @@ export class KeysView {
         const i = row * 4 + col;
         const el = h("div", { class: "pad big", style: { "--tc": t.color } }, h("span", { class: "pad-name" }, pads[i].name), h("span", { class: "pad-note" }, String(i + 1)));
         el.dataset.note = DRUM_BASE_NOTE + i;
+        el.dataset.pad = i; // an audio file dropped here loads onto the pad
+        el.dataset.track = t.id;
         grid.append(el);
       }
       this.wire(grid, ".pad");

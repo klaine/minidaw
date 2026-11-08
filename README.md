@@ -27,6 +27,14 @@ bridged to the track it plays on.
   choke groups. The built-in kit is synthesized in the app, so no third-party samples ship.
 - **Audio tracks.** Built-in drum loops or your own files (WAV, AIFF, MP3, M4A and more). Warp resamples a clip to the
   song's tempo, so its pitch follows the tempo.
+- **MIDI files.** Drop a `.mid` file on an instrument track's lane, a session slot or a track header, or use Import
+  MIDI in the device panel or a long press on an empty place.
+  - A file with several parts asks which part to use, or merges them all into one clip.
+  - On a Drum Rack, General MIDI drums (channel 10) map onto the kit's pads.
+  - Dropped anywhere else, or from Add track → Tracks from a MIDI file, the file becomes new tracks, one per part.
+    You choose each track's instrument, and can take the file's tempo.
+  - Any MIDI clip can be saved as a `.mid` file from its long-press menu.
+  - Audio files dropped on an audio track become clips there, or start a new audio track.
 - **Mixer.** Each strip has a 3-band EQ, a compressor, sends to a reverb and a delay return, pan, fader, mute, solo
   and arm. The master has a limiter.
 - **Recording.**
@@ -111,7 +119,7 @@ changing anything in `app/`.
 ## Tests
 
 ```sh
-npm test               # the four engines in a stand-in AudioWorkletGlobalScope (start, timing, stop), and the transport
+npm test               # the four engines in a stand-in AudioWorkletGlobalScope (start, timing, stop), the transport, MIDI files
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
 ```
 

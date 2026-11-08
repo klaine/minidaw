@@ -18,6 +18,7 @@ import { EditorHost } from "./ui/editor-host.js";
 import { Recording } from "./recording.js";
 import { demoProject } from "./demo.js";
 import { MidiInput } from "./midi.js";
+import { setupDrop } from "./ui/import.js";
 
 class App {
   constructor() {
@@ -84,6 +85,7 @@ class App {
       this.views.panel.update();
     });
     this.midi = new MidiInput(this);
+    setupDrop(this);
     this.loop();
     window.addEventListener("keydown", (e) => this.onKey(e));
     window.addEventListener("keyup", (e) => this.onKeyUp(e));

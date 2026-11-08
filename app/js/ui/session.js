@@ -7,6 +7,7 @@ import { menu, prompt, toast } from "./controls.js";
 import { newMidiClip, newAudioClip, guessBpm, INSTRUMENT_KINDS } from "../model.js";
 import { placeClip } from "../recording.js";
 import { pickSample } from "./browser.js";
+import { importMidiToTrack, exportClipMidi } from "./import.js";
 
 export class SessionView {
   constructor(app) {
@@ -33,7 +34,7 @@ export class SessionView {
     // header row
     for (const t of p.tracks) {
       const kind = t.type === "audio" ? "AUDIO" : (INSTRUMENT_KINDS.find((k) => k.kind === t.instrument.kind) || {}).short;
-      const head = h("div", { class: "ses-head" + (store.ui.selTrack === t.id ? " sel" : ""), style: { "--tc": t.color } },
+      const head = h("div", { class: "ses-head" + (store.ui.selTrack === t.id ? " sel" : ""), dataset: { track: t.id }, style: { "--tc": t.color } },
         h("div", { class: "ses-head-name" }, t.name), h("div", { class: "ses-head-kind" }, kind));
       gestures(head, {
         tap: () => { store.select({ selTrack: t.id, panel: "device" }); this.render(); },
@@ -80,7 +81,7 @@ export class SessionView {
     const isSel = selSlot && selSlot.trackId === t.id && selSlot.scene === s;
     let el;
     if (clip) {
-      el = h("div", { class: "ses-slot clip" + (store.ui.selClip === clip.id ? " sel" : ""), style: { "--cc": clip.color || t.color } },
+      el = h("div", { class: "ses-slot clip" + (store.ui.selClip === clip.id ? " sel" : ""), dataset: { track: t.id, scene: s }, style: { "--cc": clip.color || t.color } },
         h("span", { class: "ses-play", html: PLAY }), h("span", { class: "ses-clip-name" }, clip.name), h("span", { class: "ses-prog" }));
       gestures(el, {
         tap: (pos) => {
@@ -91,12 +92,13 @@ export class SessionView {
         longPress: (pos, e) => this.clipMenu(t, s, clip, { x: e.clientX, y: e.clientY }),
       });
     } else {
-      el = h("div", { class: "ses-slot empty" + (isSel ? " sel" : "") + (t.mixer.arm ? " armed" : "") }, h("span", { class: "ses-dot" }));
+      el = h("div", { class: "ses-slot empty" + (isSel ? " sel" : "") + (t.mixer.arm ? " armed" : ""), dataset: { track: t.id, scene: s } }, h("span", { class: "ses-dot" }));
       gestures(el, {
         tap: () => { store.select({ selTrack: t.id, selSlot: { trackId: t.id, scene: s }, selClip: null }); this.render(); },
         doubleTap: () => this.create(t, s),
         longPress: (pos, e) => menu({ x: e.clientX, y: e.clientY }, [
           t.type === "midi" ? { label: "New MIDI clip", onClick: () => this.create(t, s) } : { label: "Import a sample…", onClick: () => this.create(t, s) },
+          t.type === "midi" ? { label: "Import a MIDI file…", onClick: () => importMidiToTrack(app, t.id, { scene: s }) } : null,
           this.clipboard ? { label: "Paste clip", onClick: () => this.paste(t, s) } : null,
           { label: t.mixer.arm ? "Record here (Record button)" : "Arm the track to record here", onClick: () => {
             store.update((p) => { p.tracks.find((x) => x.id === t.id).mixer.arm = true; }, "mixer");
@@ -149,6 +151,7 @@ export class SessionView {
       }, "session") },
       { label: "Copy", onClick: () => { this.clipboard = clip.id; toast("Copied: long press an empty slot to paste"); } },
       { label: "Rename…", onClick: async () => { const n = await prompt("Clip name", clip.name); if (n) store.update((p) => { p.clips[clip.id].name = n; }, "clips"); } },
+      clip.type === "midi" ? { label: "Save as a MIDI file…", onClick: () => exportClipMidi(app, clip, t) } : null,
       "-",
       { label: "Delete", danger: true, onClick: () => store.update((p) => { p.tracks.find((x) => x.id === t.id).slots[s] = null; }, "session") },
     ], { title: clip.name });

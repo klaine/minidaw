@@ -319,6 +319,15 @@ canvas { display: block; }
 .proj-name { font-weight: 700; }
 .proj-meta { font-size: 11px; color: var(--mute); }
 
+/* importing files */
+.drop-hint { position: fixed; left: 50%; top: calc(var(--topbar-h) + 10px + var(--safe-t)); transform: translateX(-50%); z-index: 95; background: var(--accent); color: #1a1205; font-weight: 700; padding: 10px 18px; border-radius: 12px; box-shadow: 0 10px 40px #000a; pointer-events: none; max-width: 90vw; text-align: center; }
+.imp { display: grid; gap: 8px; }
+.imp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+.imp-check { display: flex; align-items: center; gap: 8px; min-height: 36px; flex: 1; min-width: 0; }
+.imp-check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.imp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imp-tempo { padding: 4px 8px; }
+
 /* the instruments' editors */
 .editor-veil { position: fixed; inset: 0; z-index: 50; background: #000a; padding: calc(10px + var(--safe-t)) calc(10px + var(--safe-r)) calc(10px + var(--safe-b)) calc(10px + var(--safe-l)); display: flex; }
 .editor-box { flex: 1; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #111; border: 1px solid var(--line2); box-shadow: 0 30px 90px #000; }

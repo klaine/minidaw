@@ -4,6 +4,7 @@ import { h, fmtBars, fmtTime } from "../util.js";
 import { menu, numberDrag, toast, segmented, drawMeter } from "./controls.js";
 import { INSTRUMENT_KINDS } from "../model.js";
 import { openProjects, exportDialog, recordOutput, settingsSheet } from "./projects.js";
+import { importMidiAsTracks } from "./import.js";
 
 const ICON = {
   play: '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>',
@@ -81,6 +82,8 @@ export class Topbar {
       ...INSTRUMENT_KINDS.map((k) => ({ label: k.kind === "drumrack" ? "Drum Rack track" : k.name + " track", hint: k.kind === "drumrack" ? "MIDI" : "synth", onClick: () => app.addTrack("midi", k.kind) })),
       "-",
       { label: "Audio track", hint: "samples, loops, input", onClick: () => app.addTrack("audio") },
+      "-",
+      { label: "Tracks from a MIDI file…", hint: ".mid", onClick: () => importMidiAsTracks(app) },
     ], { title: "Add track" });
   }
 

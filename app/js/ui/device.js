@@ -7,6 +7,14 @@ import { INSTRUMENT_KINDS, newAudioClip, guessBpm, defaultDrumState, DRUM_BASE_N
 import { metaSync, loadMeta } from "../audio/instruments.js";
 import { presetBrowser, pickSample } from "./browser.js";
 import { placeClip } from "../recording.js";
+import { importMidiToTrack } from "./import.js";
+
+/** Import a MIDI file onto a track: the selected session slot in the session, else the arrangement at the playhead */
+function importHere(app, t) {
+  const ss = app.store.ui.selSlot;
+  if (app.store.ui.view === "session") return importMidiToTrack(app, t.id, { scene: ss && ss.trackId === t.id ? ss.scene : 0 });
+  return importMidiToTrack(app, t.id, {});
+}
 
 export class DeviceView {
   constructor(app, track) {
@@ -66,6 +74,7 @@ export class DeviceView {
       h("button", { type: "button", class: "dev-preset-btn", onclick: () => presetBrowser(app, meta, cur(), pick) }, presetName),
       h("button", { type: "button", class: "icon-btn", title: "Next preset", onclick: () => step(1) }, "▶"));
     const edit = h("button", { type: "button", class: "btn primary dev-edit", onclick: () => app.editorHost.open(t.id) }, "Edit " + meta.name);
+    const imp = h("button", { type: "button", class: "btn", title: "Import a MIDI file onto this track (or drop one on it)", onclick: () => importHere(app, this.t) }, "Import MIDI…");
     this.knobs = [];
     const knobRow = h("div", { class: "dev-knobs" });
     for (const key of meta.knobs) {
@@ -93,7 +102,7 @@ export class DeviceView {
       { label: "Reload the preset", onClick: () => pick(cur()) },
     ]) }, "⋯");
     return h("div", { class: "dev-synth" },
-      h("div", { class: "dev-row" }, kindSel, presetBar, edit, more),
+      h("div", { class: "dev-row" }, kindSel, presetBar, edit, imp, more),
       knobRow);
   }
 
@@ -231,6 +240,7 @@ class DrumDevice {
         toggle("Rev", pad.reverse, () => { this.setPad((pd) => { pd.reverse = !pd.reverse; }); this.refreshEditor(); }, "small"),
         toggle("Mute", pad.mute, () => { this.setPad((pd) => { pd.mute = !pd.mute; }); this.refresh(); }, "small"),
         choke,
+        h("button", { type: "button", class: "btn small", title: "Import a MIDI file onto this track: General MIDI drums map onto the pads", onclick: () => importHere(app, this.t) }, "Import MIDI…"),
         h("button", { type: "button", class: "btn small", onclick: (e) => menu(e.currentTarget, [
           { label: "Rename pad…", onClick: async () => { const { prompt } = await import("./controls.js"); const n = await prompt("Pad name", pad.name); if (n) { this.setPad((pd) => { pd.name = n.slice(0, 14); }); this.refresh(); } } },
           { label: "Reset this pad", onClick: () => { const d = defaultDrumState().pads[this.sel]; this.setPad((pd) => Object.assign(pd, d)); this.refresh(); } },

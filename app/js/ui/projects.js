@@ -160,6 +160,8 @@ export function settingsSheet(app) {
     h("p", {}, "Session clips launch on the next bar (Launch quantization in the menu). A launched clip takes its track off the arrangement until you tap Arrangement in the top bar. Long press a session clip to copy it into the arrangement."),
     h("h3", {}, "Recording"),
     h("p", {}, "Arm a track (●) and press Record. In the session, select an empty slot on an armed track first to record a loop there. Audio tracks record the microphone or audio input. Export → Record the output captures what you hear."),
+    h("h3", {}, "MIDI and audio files"),
+    h("p", {}, "Drop a MIDI file on an instrument track (its lane, a session slot or its header), or use Import MIDI in the device panel. Dropped elsewhere, or from Add track → Tracks from a MIDI file, it becomes new tracks, one per part. On a Drum Rack, General MIDI drums land on the pads. Audio files dropped on an audio track become clips there. Long press a MIDI clip to save it as a .mid file."),
     h("h3", {}, "Keys"),
     h("p", {}, "Computer keyboard: A W S E D F T G Y H U J K O L P plays notes, Z / X shifts the octave, Space plays and stops, Tab switches Arrange and Session, ⌘Z undoes."),
     h("h3", {}, "Instruments"),

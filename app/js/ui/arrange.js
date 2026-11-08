@@ -9,6 +9,7 @@ import { metaSync, loadMeta } from "../audio/instruments.js";
 import { placeClip } from "../recording.js";
 import { pickSample } from "./browser.js";
 import { TRACK_COLORS } from "../util.js";
+import { importMidiToTrack, importMidiAsTracks, exportClipMidi } from "./import.js";
 
 const TRACK_H = 64, LANE_H = 46, HEAD_W = 196;
 
@@ -83,7 +84,7 @@ export class ArrangeView {
       const kind = t.type === "audio" ? "AUDIO" : (INSTRUMENT_KINDS.find((k) => k.kind === t.instrument.kind) || {}).short;
       const name = h("div", { class: "th-name" }, t.name);
       const btn = (label, on, cls, fn, title) => h("button", { type: "button", class: "th-btn " + cls + (on ? " on" : ""), title, onclick: (e) => { e.stopPropagation(); fn(); } }, label);
-      const row = h("div", { class: "th" + (sel ? " sel" : ""), style: { height: TRACK_H + "px", "--tc": t.color } },
+      const row = h("div", { class: "th" + (sel ? " sel" : ""), dataset: { track: t.id }, style: { height: TRACK_H + "px", "--tc": t.color } },
         h("div", { class: "th-color" }),
         h("div", { class: "th-main" },
           h("div", { class: "th-top" }, name, h("span", { class: "th-kind" }, kind)),
@@ -111,7 +112,8 @@ export class ArrangeView {
       }
     }
     const add = h("button", { type: "button", class: "arr-add", onclick: (e) => this.app.topbar.addMenu(e.currentTarget) }, "+ Add track");
-    this.headers.append(add);
+    const imp = h("button", { type: "button", class: "arr-add", onclick: () => importMidiAsTracks(this.app) }, "Import a MIDI file…");
+    this.headers.append(add, imp);
   }
 
   updateHeaderValues() { /* names and toggles change through renderHeaders */ }
@@ -198,6 +200,7 @@ export class ArrangeView {
           const start = Math.floor(this.xb(pos.x) / 4) * 4;
           menu(at, [
             r.track.type === "midi" ? { label: "New MIDI clip here", onClick: () => this.newClipAt(r.track, start) } : { label: "Import a sample here…", onClick: () => this.importAt(r.track, start) },
+            r.track.type === "midi" ? { label: "Import a MIDI file here…", onClick: () => importMidiToTrack(app, r.track.id, { start }) } : null,
             this.clipboard ? { label: "Paste clip here", onClick: () => this.paste(r.track, start) } : null,
             { label: "Set the loop to this bar", onClick: () => store.update((p) => { p.loop = { on: true, start, end: start + 4 }; }, "loop") },
           ], { title: r.track.name });
@@ -348,6 +351,7 @@ export class ArrangeView {
         store.ui.selClip = c.id;
       }, "clips") },
       { label: "Rename clip…", onClick: async () => { const n = await prompt("Clip name", clip.name); if (n) store.update((p) => { p.clips[pl.clipId].name = n; }, "clips"); } },
+      clip && clip.type === "midi" ? { label: "Save as a MIDI file…", onClick: () => exportClipMidi(app, clip, track) } : null,
       { label: "Put in the session", onClick: () => store.update((p) => { const t = tr(p, track); const i = t.slots.indexOf(null); if (i >= 0) t.slots[i] = pl.clipId; else t.slots.push(pl.clipId); }, "session") },
       "-",
       { label: "Delete", danger: true, onClick: () => this.deletePlacement(track.id, pl.id) },
@@ -371,6 +375,15 @@ export class ArrangeView {
   deleteSelection() {
     if (!this.selPl) return;
     for (const t of this.p.tracks) if (t.arrangement.some((x) => x.id === this.selPl)) { this.deletePlacement(t.id, this.selPl); return; }
+  }
+
+  /** A file dropped at page point (x, y): {track, start} on a track's lane, or null below the tracks */
+  dropTarget(x, y) {
+    const r0 = this.lanes.getBoundingClientRect();
+    const r = this.rowAt(y - r0.top);
+    if (!r) return null;
+    const sig = this.p.sig || 4;
+    return { track: r.track, start: Math.max(0, Math.floor(this.xb(x - r0.left) / sig) * sig) };
   }
 
   // ---- automation lanes ----

@@ -465,8 +465,10 @@ export class Recording {
   async syncInputs() {
     const p = this.store.project, engine = this.app.engine;
     const armed = p.tracks.filter((t) => t.type === "audio" && t.mixer.arm);
-    if (armed.length && !this.input && !this.opening) {
-      this.opening = true;
+    if (this.opening) await this.opening; // already opening (Record right after arming): wait for it
+    if (armed.length && !this.input) {
+      let done;
+      this.opening = new Promise((r) => { done = r; });
       try {
         this.input = await openInput(this.app.ctx);
         this.inputAnalyser = this.app.ctx.createAnalyser();
@@ -476,7 +478,8 @@ export class Recording {
       } catch (e) {
         toast("No audio input: " + (e.message || e), 4000);
       }
-      this.opening = false;
+      this.opening = null;
+      done();
     }
     if (!armed.length && this.input && !this.audioCap) {
       for (const g of this.monitors.values()) g.disconnect();

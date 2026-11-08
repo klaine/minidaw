@@ -38,10 +38,21 @@ bridged to the track it plays on.
 - **Mixer.** Each strip has a 3-band EQ, a compressor, sends to a reverb and a delay return, pan, fader, mute, solo
   and arm. The master has a limiter.
 - **Recording.**
-  - MIDI goes into the arrangement, or into a session slot as a loop. A playing clip on an armed track takes
-    overdubs.
-  - Audio comes from the microphone or an audio input.
+  - **Count-in.** From a stop, Record counts in first: off, 1 or 2 bars, with a big countdown you can cancel. A note
+    played just before the downbeat lands on it. The click can play only while recording.
+  - **Takes.** Notes appear in the clip while you play, and a held note grows. Quantize snaps a take's notes when it
+    ends, and a whole take is one undo step.
+  - **Arrangement.** Replace, the default, makes a new clip that grows bar by bar and replaces what it covers. With
+    the loop on, every pass adds to the same clip. Overdub plays into the clips already there.
+  - **Session.** Tap an armed track's empty slot to record a loop from the next bar. Tap it again to stop it, or set
+    a fixed length of 1, 2, 4 or 8 bars and it stops by itself and plays on seamlessly. Armed tracks with a playing
+    clip overdub into it.
+  - **Capture.** It turns what you just played into a clip, even when nothing was recording: in time if the
+    transport ran, at the song's tempo if not.
+  - **Audio.** Arming an audio track opens the microphone or audio input and shows its level, and Monitor plays it
+    through the track. The take starts exactly at the record point, with the input's latency taken off.
   - Export → Record the output captures what you hear as a WAV.
+  - Long press Record for these settings. They are kept on the device, not in the project.
 - **Export.** The arrangement or the loop is rendered offline, with the same instruments, effects and automation, to
   a 16-bit, 24-bit or 32-bit float WAV. Stems export as a zip of WAVs.
 - **Projects.** They are saved in the browser's storage, including every instrument's sound. A project can be saved

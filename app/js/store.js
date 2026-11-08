@@ -70,7 +70,7 @@ export class Store extends Emitter {
   }
 
   undo() {
-    if (!this.undoStack.length) return false;
+    if (this.locked || !this.undoStack.length) return false; // a recording in progress is one step, taken at its end
     this.redoStack.push(this.snapshot());
     this.project = this.undoStack.pop();
     this.fixSelection();
@@ -78,7 +78,7 @@ export class Store extends Emitter {
     return true;
   }
   redo() {
-    if (!this.redoStack.length) return false;
+    if (this.locked || !this.redoStack.length) return false;
     this.undoStack.push(this.snapshot());
     this.project = this.redoStack.pop();
     this.fixSelection();

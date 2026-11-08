@@ -157,6 +157,7 @@ class App {
     if (!c.live || c.reason === "notes") this.views.panel.update(c);
     this.topbar.update();
     if (!c.live) this.saveSoon();
+    if (!c.live && this.recording) this.recording.syncInputs();
   }
 
   onTransport(what) {
@@ -173,6 +174,7 @@ class App {
         this.views[v].frame && this.views[v].frame();
         this.views.panel.frame();
         this.topbar.frame();
+        this.recording.frame();
       } catch (e) { console.error(e); }
       requestAnimationFrame(frame);
     };

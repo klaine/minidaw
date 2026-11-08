@@ -572,6 +572,18 @@ export class ArrangeView {
         c.fillStyle = "rgba(20,20,24,0.45)";
         c.fillRect(0, y, w, r.h - 1);
       }
+      const ar = app.recording.audioRegion(r.track.id);
+      if (ar && ar.end > ar.start) { // audio being recorded
+        const ax = this.bx(ar.start), aw = (ar.end - ar.start) * this.ppb;
+        c.fillStyle = "rgba(255,77,77,0.35)";
+        roundRect(c, ax, y + 2, Math.max(2, aw), r.h - 5, 4);
+        c.fill();
+        c.fillStyle = "#ff4d4d";
+        c.fillRect(ax, y + 2, Math.max(2, aw), 15);
+        c.fillStyle = "#111";
+        c.font = "600 11px -apple-system, system-ui, sans-serif";
+        if (aw > 40) c.fillText("● Recording", ax + 5, y + 10);
+      }
     }
     // the playhead
     const tr0 = app.transport;
@@ -582,7 +594,7 @@ export class ArrangeView {
   }
 
   drawClip(c, clip, pl, x, y, w, hh, track, sel, off) {
-    const col = clip.color || track.color;
+    const col = clip.rec ? "#ff4d4d" : clip.color || track.color; // a take being recorded is red
     c.save();
     roundRect(c, x + 0.5, y, Math.max(3, w - 1), hh, 4);
     c.fillStyle = shade(col, -0.55);
@@ -671,7 +683,14 @@ export class ArrangeView {
 
   frame() {
     const tr0 = this.app.transport;
-    if (this.meters) for (const [id, m] of this.meters) drawMeter(m, this.app.engine.trackPeak(id));
+    if (this.meters) {
+      const rec = this.app.recording;
+      for (const [id, m] of this.meters) {
+        const t = this.app.store.track(id);
+        const input = t && t.type === "audio" && t.mixer.arm ? rec.inputPeak() : 0; // an armed audio track shows its input
+        drawMeter(m, Math.max(this.app.engine.trackPeak(id), input));
+      }
+    }
     if (!tr0.playing) return;
     const pos = tr0.songBeat();
     if (this.follow) {

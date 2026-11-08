@@ -29,6 +29,7 @@ export class DeviceView {
     const t = this.t;
     if (!t) return;
     const inst = this.app.engine.instrument(t.id);
+    if (t.type === "audio" && c.reason === "mixer" && !c.live) { this.render(); return; }
     if (inst !== this.inst || (c.reason && ["tracks", "undo", "project"].includes(c.reason))) { this.render(); return; }
     if (this.drum && !c.live) this.drum.refresh();
   }
@@ -130,7 +131,15 @@ export class DeviceView {
         store.ui.panel = "clip";
       }, "clips");
     };
+    const set = (k) => store.update((p) => { const x = p.tracks.find((q) => q.id === t.id); x.mixer[k] = !x.mixer[k]; }, "mixer");
+    this.inputMeter = h("canvas", { class: "dev-input-meter", width: 120, height: 10 });
+    const inputRow = h("div", { class: "dev-row dev-input" },
+      toggle("● Arm", t.mixer.arm, () => set("arm"), "arm"),
+      toggle("Monitor", t.mixer.monitor, () => set("monitor"), "small"),
+      h("span", { class: "dim" }, "Input"), this.inputMeter,
+      h("span", { class: "dim" }, t.mixer.arm ? (app.recording.input ? (t.mixer.monitor ? "you hear the input through this track: use headphones" : "armed: press Record, or tap an empty slot in the session") : "opening the input…") : "arm to record the microphone or an audio input"));
     return h("div", { class: "dev-audio" },
+      inputRow,
       h("div", { class: "dev-row" },
         h("button", { type: "button", class: "btn primary", onclick: () => add("arrange") }, "Add a sample at the playhead"),
         h("button", { type: "button", class: "btn", onclick: () => add("session") }, "Add a sample to the session")),
@@ -138,7 +147,15 @@ export class DeviceView {
       h("p", { class: "dim" }, "Audio clips follow the tempo when Warp is on (they're resampled, so the pitch follows too). Edit a clip's tempo, start and length in the Clip tab."));
   }
 
-  frame() { if (this.drum) this.drum.frame(); }
+  frame() {
+    if (this.drum) this.drum.frame();
+    if (this.inputMeter && this.inputMeter.isConnected) {
+      const c = this.inputMeter.getContext("2d"), pk = this.app.recording.inputPeak();
+      const db = pk > 0 ? 20 * Math.log10(pk) : -100, f = Math.max(0, Math.min(1, (db + 54) / 54));
+      c.fillStyle = "#2a2c31"; c.fillRect(0, 0, 120, 10);
+      c.fillStyle = db > -1 ? "#ff4d3d" : db > -9 ? "#ffb03a" : "#3fd67a"; c.fillRect(0, 0, 120 * f, 10);
+    }
+  }
   dispose() { if (this.drum) this.drum.dispose(); }
 }
 

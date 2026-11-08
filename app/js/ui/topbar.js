@@ -5,6 +5,8 @@ import { menu, numberDrag, toast, segmented, drawMeter } from "./controls.js";
 import { INSTRUMENT_KINDS } from "../model.js";
 import { openProjects, exportDialog, recordOutput, settingsSheet } from "./projects.js";
 import { importMidiAsTracks } from "./import.js";
+import { recordSettings } from "./recsettings.js";
+import { gestures } from "./gestures.js";
 
 const ICON = {
   play: '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>',
@@ -17,6 +19,7 @@ const ICON = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6"/></svg>',
   menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+  capture: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4v4.5h4.5"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M14 6l6 6-6 6"/></svg>',
 };
 const icon = (name, label, onclick, cls = "") => h("button", { type: "button", class: "tb-btn " + cls, title: label, "aria-label": label, onclick, html: ICON[name] });
@@ -30,7 +33,11 @@ export class Topbar {
     this.redoBtn = icon("redo", "Redo", () => store.redo());
     this.playBtn = icon("play", "Play (space)", () => app.togglePlay(), "play");
     this.stopBtn = icon("stop", "Stop (twice: to the start)", () => app.stop(), "stop");
-    this.recBtn = icon("rec", "Record on the armed tracks", () => this.toggleRecord(), "rec");
+    this.recBtn = icon("rec", "Record on the armed tracks (long press: count-in and settings)", null, "rec");
+    this.recBadge = h("span", { class: "tb-badge" });
+    this.recBtn.append(this.recBadge);
+    gestures(this.recBtn, { tap: () => this.toggleRecord(), longPress: () => recordSettings(app) });
+    this.captureBtn = icon("capture", "Capture: what you just played, as a clip (even when nothing was recording)", () => app.recording.capture(), "capture");
     this.loopBtn = icon("loop", "Loop", () => store.update((p) => { p.loop.on = !p.loop.on; }, "loop"), "loop");
     this.metroBtn = icon("metro", "Metronome", () => store.update((p) => { p.metronome = !p.metronome; }, "transport"), "metro");
     this.backBtn = h("button", { type: "button", class: "tb-back", title: "Back to Arrangement: the tracks play the arrangement again", onclick: () => app.transport.backToArrangement(), html: ICON.back + "<span>Arrangement</span>" });
@@ -53,7 +60,7 @@ export class Topbar {
     this.cpu = h("span", { class: "tb-cpu" });
     this.el = h("header", { class: "topbar" },
       h("div", { class: "tb-group left" }, h("span", { class: "logo-mark", "aria-hidden": "true" }), this.name, this.undoBtn, this.redoBtn),
-      h("div", { class: "tb-group transport" }, this.playBtn, this.stopBtn, this.recBtn, this.loopBtn, this.metroBtn,
+      h("div", { class: "tb-group transport" }, this.playBtn, this.stopBtn, this.recBtn, this.captureBtn, this.loopBtn, this.metroBtn,
         h("div", { class: "tb-tempo" }, this.bpm, h("span", { class: "tb-unit" }, "BPM"), tap), this.pos, this.backBtn),
       h("div", { class: "tb-group right" }, this.views, add, exp, more, this.meter));
     this.update();
@@ -104,6 +111,7 @@ export class Topbar {
       { label: "Save now", hint: "⌘S", onClick: () => app.save().then(() => toast("Saved")) },
       { label: "New project", onClick: () => app.newProject() },
       "-",
+      { label: "Recording settings…", hint: "count-in", onClick: () => recordSettings(app) },
       { label: "Launch quantization", hint: store.project.launchQuant ? store.project.launchQuant / 4 + " bar" : "none", onClick: () => {
         const next = { 0: 1, 1: 4, 4: 8, 8: 16, 16: 0 }[store.project.launchQuant] ?? 4;
         store.update((p) => { p.launchQuant = next; }, "transport");
@@ -119,7 +127,11 @@ export class Topbar {
     this.undoBtn.disabled = !store.undoStack.length;
     this.redoBtn.disabled = !store.redoStack.length;
     this.playBtn.classList.toggle("on", tr.playing);
-    this.recBtn.classList.toggle("on", app.recording.active);
+    const rec = app.recording;
+    this.recBtn.classList.toggle("on", rec.state === "rec");
+    this.recBtn.classList.toggle("armed", rec.state === "countin");
+    this.recBadge.textContent = rec.prefs.countIn ? String(rec.prefs.countIn) : "";
+    this.recBadge.title = rec.prefs.countIn ? `Count-in: ${rec.prefs.countIn} bar${rec.prefs.countIn > 1 ? "s" : ""}` : "";
     this.loopBtn.classList.toggle("on", p.loop.on);
     this.metroBtn.classList.toggle("on", p.metronome);
     this.bpm.set(p.bpm);
@@ -133,7 +145,10 @@ export class Topbar {
     const bars = fmtBars(b, p.sig || 4);
     if (bars !== this.lastBars) { this.pos.firstChild.textContent = bars; this.pos.lastChild.textContent = fmtTime(b, p.bpm); this.lastBars = bars; }
     drawMeter(this.meter, app.engine.masterPeak());
-    if (app.recording.active || app.outputRec) this.recBtn.classList.toggle("blink", Math.floor(performance.now() / 400) % 2 === 0);
+    const rec = app.recording;
+    if (rec.state === "countin") this.recBtn.classList.toggle("blink", Math.floor(performance.now() / 180) % 2 === 0);
+    else if (app.outputRec && rec.state !== "rec") this.recBtn.classList.toggle("blink", Math.floor(performance.now() / 400) % 2 === 0);
     else this.recBtn.classList.remove("blink");
+    if ((this.frames = (this.frames || 0) + 1) % 15 === 0) this.captureBtn.disabled = !rec.canCapture;
   }
 }

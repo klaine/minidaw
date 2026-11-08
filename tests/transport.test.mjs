@@ -111,5 +111,28 @@ console.log("automation");
   check(vs.length > 0 && vs.every((v) => near(v, 0.25)), "a clip envelope wins over the track's lane: " + JSON.stringify(vs.slice(0, 5)));
 }
 
+console.log("count-in");
+{
+  const { p, t, events, tr } = rig();
+  const clicks = [];
+  tr.engine.click = (time, accent) => clicks.push([+(time - 0.05).toFixed(4), accent]);
+  const c = newMidiClip(p, t, 4);
+  c.notes.push({ p: 60, t: 0, d: 0.5, v: 100 });
+  t.arrangement.push({ id: "a", clipId: c.id, start: 0, length: 4, offset: 0 });
+  tr.offline = false;
+  tr.play(0, { countIn: 4 });
+  clearInterval(tr.timer);
+  for (let i = 0; i < 20; i++) tr.step(); // the bar of count-in, then a bar of song
+  const ons = events.filter((e) => e.k === "on").map((e) => +(e.time - 0.05).toFixed(4));
+  check(JSON.stringify(ons) === JSON.stringify([2]), "the song starts after a bar of count-in, silent before: " + JSON.stringify(ons));
+  const pre = clicks.filter((c) => c[0] < 2 - 1e-6);
+  check(pre.length === 4 && pre[0][1] === true && pre.slice(1).every((c) => !c[1]), "four clicks before it, the first accented: " + JSON.stringify(pre));
+  check(clicks.every((c) => c[0] < 2 - 1e-6), "no click after it with the metronome off");
+  const b = tr.beatsAt(0.05 + 1);
+  check(Math.abs(b.s + 2) < 1e-6 && Math.abs(b.g - 2) < 1e-6, `the song beat counts up to 0 (s ${b.s}, g ${b.g})`);
+  const before = tr.beatsAt(0.05 - 0.25);
+  check(Math.abs(before.s + 4.5) < 1e-6, "the clock runs backwards before the first step (an input that started early): " + before.s);
+}
+
 console.log(failures ? `${failures} FAILED` : "all passed");
 process.exit(failures ? 1 : 0);

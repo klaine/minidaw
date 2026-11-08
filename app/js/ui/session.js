@@ -81,10 +81,11 @@ export class SessionView {
     const isSel = selSlot && selSlot.trackId === t.id && selSlot.scene === s;
     let el;
     if (clip) {
-      el = h("div", { class: "ses-slot clip" + (store.ui.selClip === clip.id ? " sel" : ""), dataset: { track: t.id, scene: s }, style: { "--cc": clip.color || t.color } },
-        h("span", { class: "ses-play", html: PLAY }), h("span", { class: "ses-clip-name" }, clip.name), h("span", { class: "ses-prog" }));
+      el = h("div", { class: "ses-slot clip" + (store.ui.selClip === clip.id ? " sel" : "") + (clip.rec ? " recording" : ""), dataset: { track: t.id, scene: s }, style: { "--cc": clip.color || t.color } },
+        h("span", { class: "ses-play", html: clip.rec ? REC : PLAY }), h("span", { class: "ses-clip-name" }, clip.name), h("span", { class: "ses-prog" }));
       gestures(el, {
         tap: (pos) => {
+          if (app.recording.slotState(t.id, s)) { app.recording.stop(); return; } // recording here: done
           if (pos.x < 38) app.transport.launch(t.id, s);
           else store.select({ selTrack: t.id, selClip: clip.id, selSlot: { trackId: t.id, scene: s }, panel: "clip" }) || this.render();
         },
@@ -92,15 +93,22 @@ export class SessionView {
         longPress: (pos, e) => this.clipMenu(t, s, clip, { x: e.clientX, y: e.clientY }),
       });
     } else {
-      el = h("div", { class: "ses-slot empty" + (isSel ? " sel" : "") + (t.mixer.arm ? " armed" : ""), dataset: { track: t.id, scene: s } }, h("span", { class: "ses-dot" }));
+      el = h("div", { class: "ses-slot empty" + (isSel ? " sel" : "") + (t.mixer.arm ? " armed" : ""), dataset: { track: t.id, scene: s },
+        title: t.mixer.arm ? "Tap to record here" : "" }, h("span", { class: "ses-dot" }));
       gestures(el, {
-        tap: () => { store.select({ selTrack: t.id, selSlot: { trackId: t.id, scene: s }, selClip: null }); this.render(); },
+        tap: () => {
+          store.select({ selTrack: t.id, selSlot: { trackId: t.id, scene: s }, selClip: null });
+          // an armed track's empty slot records (as Ableton's slot record buttons); tapping it again stops
+          if (t.mixer.arm || app.recording.slotState(t.id, s)) { app.recording.recordSlot(t.id, s); return; }
+          this.render();
+        },
         doubleTap: () => this.create(t, s),
         longPress: (pos, e) => menu({ x: e.clientX, y: e.clientY }, [
           t.type === "midi" ? { label: "New MIDI clip", onClick: () => this.create(t, s) } : { label: "Import a sample…", onClick: () => this.create(t, s) },
           t.type === "midi" ? { label: "Import a MIDI file…", onClick: () => importMidiToTrack(app, t.id, { scene: s }) } : null,
           this.clipboard ? { label: "Paste clip", onClick: () => this.paste(t, s) } : null,
-          { label: t.mixer.arm ? "Record here (Record button)" : "Arm the track to record here", onClick: () => {
+          { label: t.mixer.arm ? "Record here" : "Arm the track and record here", onClick: () => { app.recording.recordSlot(t.id, s); } },
+          { label: "Arm the track (then tap a slot to record)", disabled: t.mixer.arm, onClick: () => {
             store.update((p) => { p.tracks.find((x) => x.id === t.id).mixer.arm = true; }, "mixer");
             store.select({ selTrack: t.id, selSlot: { trackId: t.id, scene: s } });
             this.render();
@@ -187,6 +195,9 @@ export class SessionView {
         const queued = s && s.queued && s.queued.scene === i;
         el.classList.toggle("playing", !!playing);
         el.classList.toggle("queued", !!queued);
+        const rs = this.app.recording.slotState(t.id, i);
+        el.classList.toggle("recording", !!rs);
+        el.classList.toggle("rec-wait", rs === "countin");
       }
       const stop = this.cells.get(t.id + ":stop");
       if (stop) stop.classList.toggle("queued", !!(s && s.queued && s.queued.scene === -1));
@@ -196,7 +207,8 @@ export class SessionView {
   }
 
   frame() {
-    const tr = this.app.transport;
+    const tr = this.app.transport, rec = this.app.recording;
+    if (rec.active || this.wasRec) { this.paintStates(); this.wasRec = rec.active; }
     if (!tr.playing) return;
     const g = tr.now().g;
     for (const t of this.p.tracks) {
@@ -215,4 +227,5 @@ export class SessionView {
 }
 
 const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+const REC = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/></svg>';
 const STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>';

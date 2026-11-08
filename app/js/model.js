@@ -47,7 +47,7 @@ export function newTrack(project, type, kind) {
     color: TRACK_COLORS[(n * 5) % TRACK_COLORS.length],
     type,
     instrument: type === "audio" ? null : { kind, preset: null, state: kind === "drumrack" ? defaultDrumState() : null },
-    mixer: { vol: UNITY, pan: 0, mute: false, solo: false, arm: false, sendA: 0, sendB: 0, eq: { low: 0, mid: 0, high: 0 }, comp: false },
+    mixer: { vol: UNITY, pan: 0, mute: false, solo: false, arm: false, monitor: false, sendA: 0, sendB: 0, eq: { low: 0, mid: 0, high: 0 }, comp: false },
     slots: Array.from({ length: project.scenes.length }, () => null),
     arrangement: [],
     automation: {},

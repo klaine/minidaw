@@ -46,7 +46,10 @@ export class Transport {
   beatsAt(t) {
     const segs = this.segments;
     if (!segs.length) return { g: 0, s: this.position };
-    if (t < segs[0].t0) return { g: segs[0].g0, s: segs[0].s0 };
+    if (t < segs[0].t0) { // before the first step (an input recording that began a moment early): the same clock, backwards
+      const d = (t - segs[0].t0) / segs[0].spb;
+      return { g: segs[0].g0 + d, s: segs[0].s0 + d };
+    }
     for (let i = segs.length - 1; i >= 0; i--) {
       const seg = segs[i];
       if (t >= seg.t0) {
@@ -63,15 +66,19 @@ export class Transport {
     return this.beatsAt(this.ctx.currentTime - lat);
   }
   songBeat() { return this.now().s; }
+  /** Counting in (playing, the song not reached yet) */
+  get inPreroll() { return this.playing && this.prerollEnd !== null && this.prerollEnd !== undefined && this.now().s < this.prerollEnd - 1e-6; }
 
   // ---- play / stop ----
-  play(from = this.position) {
+  /** Play from song beat `from`; countIn: beats of clicks first (the song is silent until `from`) */
+  play(from = this.position, { countIn = 0 } = {}) {
     if (this.playing) this.halt();
     const p = this.project;
     this.playing = true;
     this.playStart = from;
+    this.prerollEnd = countIn > 0 ? from : null;
     const t = this.ctx.currentTime + 0.05;
-    this.nextTime = t; this.nextG = 0; this.nextS = from;
+    this.nextTime = t; this.nextG = 0; this.nextS = from - countIn;
     this.segments = [];
     this.fresh = new Set(p.tracks.map((x) => x.id));
     this.autoInit = new Set();
@@ -205,6 +212,8 @@ export class Transport {
     const loop = this.loopRange();
     const looping = loop && s0 < loop.end - EPS;
     if (looping && s0 + len > loop.end) len = loop.end - s0;
+    const preroll = this.prerollEnd !== null && this.prerollEnd !== undefined && s0 < this.prerollEnd - EPS;
+    if (preroll && s0 + len > this.prerollEnd) len = this.prerollEnd - s0;
     if (!this.offline) {
       for (const t of p.tracks) {
         const s = this.session.get(t.id);
@@ -214,7 +223,8 @@ export class Transport {
       }
     }
     if (len < EPS) len = EPS;
-    this.scheduleWindow(g0, s0, len, t0, spb);
+    if (preroll) this.clicks(s0, len, t0, spb); // the count-in: only the click
+    else this.scheduleWindow(g0, s0, len, t0, spb);
     this.segments.push({ t0, g0, s0, len, spb });
     this.nextG = g0 + len;
     this.nextS = s0 + len;
@@ -259,10 +269,13 @@ export class Transport {
       this.automate(track, ch, g0, s0, len, t0, spb, s);
       if (ch.instrument && ch.instrument.wantsClock) this.clock(ch.instrument, g0, len, t0, spb);
     }
-    if (p.metronome && !this.offline) {
-      const sig = p.sig || 4;
-      for (let b = Math.ceil(s0 - EPS); b < s0 + len - EPS; b++) this.engine.click(t0 + (b - s0) * spb, b % sig === 0);
-    }
+    if ((p.metronome || (this.clickWhen && this.clickWhen())) && !this.offline) this.clicks(s0, len, t0, spb);
+  }
+
+  clicks(s0, len, t0, spb) {
+    if (this.offline) return;
+    const sig = this.project.sig || 4;
+    for (let b = Math.ceil(s0 - EPS); b < s0 + len - EPS; b++) this.engine.click(t0 + (b - s0) * spb, ((b % sig) + sig) % sig === 0);
   }
 
   /** MIDI clock (24 per beat, Start at the first) for instruments that follow it */

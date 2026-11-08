@@ -13,16 +13,19 @@ let p8bank = null;
 export const instrumentUrl = (kind, rel) => new URL(kind + "/" + rel, BASE).href;
 
 export async function loadMeta(kind) {
-  if (kind === "drumrack") return { id: "drumrack", name: "Drum Rack", kind: "drumrack", presets: [], params: [], knobs: [] };
+  if (kind === "drumrack") return DRUM_META;
   if (!metas.has(kind)) {
-    metas.set(kind, fetch(instrumentUrl(kind, "meta.json")).then((r) => {
+    const pr = fetch(instrumentUrl(kind, "meta.json")).then((r) => {
       if (!r.ok) throw new Error(kind + " meta.json: HTTP " + r.status);
       return r.json();
-    }));
+    }).then((v) => { pr.resolved = true; pr.value = v; return v; });
+    metas.set(kind, pr);
   }
   return metas.get(kind);
 }
+const DRUM_META = { id: "drumrack", name: "Drum Rack", kind: "drumrack", presets: [], params: [], knobs: [] };
 export const metaSync = (kind) => {
+  if (kind === "drumrack") return DRUM_META;
   const m = metas.get(kind);
   return m && m.resolved ? m.value : null;
 };
@@ -63,7 +66,6 @@ const compiledIn = new WeakMap();
 export async function createInstrument(ctx, kind, { state, preset, samples, track } = {}) {
   await prepareContext(ctx);
   const meta = await loadMeta(kind);
-  metas.get(kind).resolved = true; metas.get(kind).value = meta;
   if (kind === "drumrack") return new DrumRack(ctx, track, samples);
   let set = compiledIn.get(ctx);
   if (!set) compiledIn.set(ctx, (set = new Set()));
@@ -85,8 +87,10 @@ export async function createInstrument(ctx, kind, { state, preset, samples, trac
   const ready = await inst.ready;
   if (!ready.ok) throw new Error(meta.name + " didn't start: " + (ready.error || "unknown error"));
   set.add(kind);
+  if (typeof preset === "string") { const i = meta.presets.findIndex((x) => x.name === preset); preset = i >= 0 ? i : null; }
   if (state) await inst.setState(state);
   else await inst.loadPreset(preset ?? meta.defaultPreset ?? 0);
+  inst.presetIndex = state ? null : (preset ?? meta.defaultPreset ?? 0);
   return inst;
 }
 
@@ -107,6 +111,11 @@ class WorkletInstrument {
   }
   onMessage(d) {
     if (d.t === "ready") { this.readyResolve(d); return; }
+    if (d.t === "slot") { // PRO-8000 V: the firmware's sound changed slot (a program change, its own editor)
+      this.slot = d.slot;
+      const pr = this.meta.presets.find((x) => x.slot === d.slot);
+      if (pr) this.name = pr.name;
+    }
     if (d.id && this.pending.has(d.id)) {
       const fn = this.pending.get(d.id);
       this.pending.delete(d.id);

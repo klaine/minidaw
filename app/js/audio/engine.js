@@ -24,6 +24,7 @@ export class AudioEngine {
       input: c.createGain(),
       fader: c.createGain(),
       limiter: c.createDynamicsCompressor(),
+      clip: c.createWaveShaper(),
       analyser: c.createAnalyser(),
       out: c.createGain(),
     };
@@ -34,7 +35,15 @@ export class AudioEngine {
     m.limiter.attack.value = 0.002;
     m.limiter.release.value = 0.12;
     m.analyser.fftSize = 1024;
-    m.input.connect(m.fader).connect(m.limiter).connect(m.out);
+    // what the limiter lets past (its attack) is rounded off below full scale
+    const curve = new Float32Array(2049);
+    for (let i = 0; i < curve.length; i++) {
+      // input -1..1 (beyond: the ends); unity to 0.85, then a soft knee to 0.985
+      const x = i / 1024 - 1, a = Math.abs(x);
+      curve[i] = Math.sign(x) * (a < 0.85 ? a : 0.85 + 0.135 * Math.tanh((a - 0.85) / 0.135));
+    }
+    m.clip.curve = curve;
+    m.input.connect(m.fader).connect(m.limiter).connect(m.clip).connect(m.out);
     m.out.connect(m.analyser);
     m.out.connect(c.destination);
     this.returns = [new ReturnStrip(this, "reverb"), new ReturnStrip(this, "delay")];

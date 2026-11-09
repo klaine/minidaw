@@ -124,6 +124,22 @@ class User {
     }
     throw new Error(name + "'s lane can't be scrolled into view");
   }
+  /** The open piano roll's layout (the Kick row, beats 1-4), once it stays the same over a few frames */
+  async settledRoll() {
+    let last = "";
+    for (let i = 0; i < 40; i++) {
+      const g = await this.state(async () => {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const pr = window.minidaw.views.panel.child;
+        if (!pr || !pr.surf || !pr.surf.w) return null;
+        return { kickY: pr.py(36) + pr.rowH / 2, beatX: [0, 1, 2, 3].map((b) => pr.bx(b) + 6), w: pr.surf.w };
+      });
+      const key = JSON.stringify(g);
+      if (g && key === last) return g;
+      last = key;
+    }
+    throw new Error("the piano roll never settled");
+  }
   header(name) { return this.page.locator(".th", { has: this.page.locator(".th-name", { hasText: new RegExp("^" + name + "$") }) }); }
 }
 
@@ -157,11 +173,12 @@ const FLOWS = {
     await u.doubleTapAt(p.x, p.y);
     await u.page.locator(".pr-canvas").waitFor();
     // tap the Kick row at each beat of the bar
+    // look before tapping: the roll as it's drawn once it has settled (it fits the clip to its width when it opens)
+    const geo = await u.settledRoll();
     const cv = await u.box(u.page.locator(".pr-canvas"));
-    const geo = await u.state(() => { const pr = window.minidaw.views.panel.child; return { kickY: pr.py(36) + pr.rowH / 2, beatX: [0, 1, 2, 3].map((b) => pr.bx(b) + 6) }; });
     for (const x of geo.beatX) await u.tapAt(cv.x + x, cv.y + geo.kickY);
     const notes = await u.state(() => window.minidaw.store.selectedClip.notes.map((n) => [n.p, n.t]));
-    assert.deepStrictEqual(notes, [[36, 0], [36, 1], [36, 2], [36, 3]], "four kicks on the beats");
+    assert.deepStrictEqual(notes, [[36, 0], [36, 1], [36, 2], [36, 3]], "four kicks on the beats, got " + JSON.stringify(notes));
     await u.tap("Play (space)");
     const lvl = await u.level("Drums", 2000);
     assert.ok(db(lvl) > -30, `the kicks are heard (${db(lvl).toFixed(1)} dBFS)`);
@@ -265,6 +282,7 @@ const FLOWS = {
     await u.doubleTapAt(p.x, p.y);
     await u.page.locator(".pr-canvas").waitFor();
     // tap the Snare row's name, then Pad sounds: that pad's editor
+    await u.settledRoll();
     const cv = await u.box(u.page.locator(".pr-canvas"));
     const y = await u.state(() => { const pr = window.minidaw.views.panel.child; return pr.py(37) + pr.rowH / 2; });
     await u.tapAt(cv.x + 20, cv.y + y);

@@ -1,10 +1,9 @@
-# Tests, then app/ on GitHub Pages (Settings → Pages → Source: GitHub Actions). The instruments are committed in
+# Tests, then app/ on GitHub Pages from the default branch (Settings → Pages → Source: GitHub Actions). The instruments are committed in
 # app/instruments/ (scripts/build_instruments.sh), so neither the submodules nor a toolchain are needed here.
 name: Test and deploy
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -46,8 +45,9 @@ jobs:
           name: user-flow-failures
           path: test-results/e2e
 
+  # deploys from the repository's default branch only
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: [test, user-flows]
     runs-on: ubuntu-latest
     environment:

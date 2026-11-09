@@ -87,8 +87,9 @@ The built instruments are committed in `app/instruments/`, so the app runs as is
 npm run serve                  # python3 -m http.server -d app 8765, then open http://localhost:8765
 ```
 
-Audio worklets need `https://` or `localhost`. GitHub Pages serves `app/` through `.github/workflows/pages.yml`. To
-turn it on, set Settings → Pages → Source to GitHub Actions.
+Audio worklets need `https://` or `localhost`. The site, https://klaine.github.io/minidaw/, is the `gh-pages` branch,
+which GitHub Pages serves. `scripts/pages.sh --push` writes it from `app/`: one commit, replaced on each run. Run it
+after a change is committed.
 
 ## The instruments
 
@@ -137,7 +138,7 @@ changing anything in `app/`.
 ```sh
 npm test               # the four engines in a stand-in AudioWorkletGlobalScope (start, timing, stop), the transport, MIDI files
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
-npm run test:e2e       # the user flows (below)
+npm run test:e2e       # the user flows (below); CI runs both on every push (.github/workflows/test.yml)
 ```
 
 `tests/e2e/run.cjs` is a set of user flows, run in Chromium at an iPad's size with touch. Each starts from a fresh

@@ -2,7 +2,7 @@
 // (the app, the instruments, their editors), so an active worker means a complete offline copy; until then the page
 // runs from the network. Requests are answered from the cache first, then the network (and cached). A new VERSION
 // (scripts/gen_precache.mjs) installs a new copy and the old one is removed.
-const VERSION = "dff41f6fe781";
+const VERSION = "da9d1ecc65a8";
 const CACHE = "minidaw-" + VERSION;
 const SHELL = ["./", "index.html", "css/app.css", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "precache.json"];
 

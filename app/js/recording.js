@@ -155,7 +155,7 @@ export class Recording {
     if (this.audioCap) {
       const cap = this.audioCap;
       this.audioCap = null;
-      audio = { chans: await cap.stop(), t0: cap.startTime };
+      audio = { chans: await cap.stop(), t0: cap.startTime, b0: cap.b0 };
       cap.dispose();
     }
     store.live(() => {
@@ -525,14 +525,17 @@ export class Recording {
     if (!this.input) { this.audioTake = null; return; }
     this.audioCap = new Capture(this.app.ctx, this.input.src, 2);
     await this.audioCap.start();
+    // where in the song the capture began, worked out now: by the time the take ends the transport has forgotten
+    // (it keeps its last steps only), and a long take over a loop lost its beginning
+    this.audioCap.b0 = this.transport.beatsAt(this.audioCap.startTime - this.inputLatency());
   }
+  inputLatency() { const ctx = this.app.ctx; return (ctx.outputLatency || ctx.baseLatency || 0) + (this.input ? this.input.latency : 0); }
 
   /** The recorded audio as clips: trimmed to start on the record point, the input's latency taken off */
-  async audioClips({ chans, t0 }, now) {
+  async audioClips({ chans, t0, b0: started }, now) {
     const app = this.app, store = this.store, take = this.audioTake;
     const sr = app.ctx.sampleRate, spb = 60 / store.project.bpm, sig = this.sig();
-    const lat = (app.ctx.outputLatency || app.ctx.baseLatency || 0) + (this.input ? this.input.latency : 0);
-    const b0 = this.transport.beatsAt(t0 - lat);
+    const b0 = started || this.transport.beatsAt(t0 - this.inputLatency());
     const drop = Math.round((take.kind === "session" ? take.startG - b0.g : take.startS - b0.s) * spb * sr);
     const trimmed = chans.map((c) => c.subarray(Math.max(0, drop)));
     if (trimmed[0].length < sr * 0.05) return;

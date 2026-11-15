@@ -228,6 +228,9 @@ browser profile and fails on any page error. The flows cover:
   with a count-in; a session loop; Capture.
 - **Playing by touch:** pads in the song's key, one-finger chords, key changes with undo, Keys staying open across
   tracks; a new song from the New clip button to a looping beat, and the bigger panel.
+- **Fingers (real touch events):** a swipe scrolls the step sequencer's rows and sets nothing, a swipe along a row
+  paints, a rolling fingertip still taps; the session redraws after its own edits and a deleted playing clip stops;
+  a fader's double tap resets it; the top bar's tabs are whole on a 1024-wide iPad.
 - **MIDI devices (stand-ins for the hardware):** a keyboard plays the selected track and its notes end where they
   began; a Launchpad Pro Mk3 is set up, lights the session, launches clips and scenes, arms a track and stops.
 - **Steps and kits:** the step sequencer (accents, ratchets, painting, pages, swing); a kit built from a folder with

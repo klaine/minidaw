@@ -225,6 +225,43 @@ console.log("session clips and edits of the session");
   ctx.currentTime = 0;
 }
 
+console.log("a late timer, automation with nothing to follow, a count-in by the loop's end");
+{
+  const { p, t, events, tr, ctx } = rig();
+  const c = newMidiClip(p, t, 4);
+  for (let i = 0; i < 16; i++) c.notes.push({ p: 60, t: i * 0.25, d: 0.1, v: 100 });
+  t.arrangement.push({ id: "a", clipId: c.id, start: 0, length: 64, offset: 0 });
+  tr.offline = false;
+  tr.play(0);
+  clearInterval(tr.timer);
+  events.length = 0;
+  ctx.currentTime += 5; // the page's timer was held back five seconds
+  tr.tick();
+  const late = events.filter((e) => e.k === "on" && e.time < ctx.currentTime);
+  check(late.length === 0, "after a stalled timer nothing is scheduled in the past (" + late.length + " notes would sound at once)");
+  check(Math.abs(tr.beatsAt(ctx.currentTime).s - 9.9) < 0.3, "the song is where it would have been: beat " + tr.beatsAt(ctx.currentTime).s.toFixed(2));
+  tr.stop();
+  ctx.currentTime = 0;
+  // a mixer setting nothing automates here goes back to the track's own
+  t.mixer.vol = 0.4; t.mixer.pan = -0.5; t.mixer.sendA = 0.3;
+  check(tr.laneValue(t, "vol", 0, 0, null) === 0.4 && tr.laneValue(t, "pan", 0, 0, null) === 0.25 && tr.laneValue(t, "sendA", 0, 0, null) === 0.3, "volume, pan and sends with no lane: the track's own");
+  check(tr.laneValue(t, "p:cutoff", 0, 0, null) === null, "an instrument's parameter with no lane is left alone");
+  t.automation.vol = [{ t: 0, v: 0 }, { t: 4, v: 1 }];
+  check(Math.abs(tr.laneValue(t, "vol", 0, 2, null) - 0.5) < 1e-9, "a lane is followed");
+  check(tr.laneValue(t, "vol", 0, 2, { follow: false, playing: null }) === 0.4, "not by a track that left the arrangement for the session: its own again");
+  delete t.automation.vol;
+  // counting in from just past the loop's end: the count-in ends
+  p.loop = { on: true, start: 8, end: 16 };
+  tr.offline = false;
+  tr.play(17, { countIn: 4 });
+  clearInterval(tr.timer);
+  for (let i = 0; i < 40; i++) tr.step();
+  ctx.currentTime = tr.nextTime; // the listener has got there
+  check(!tr.inPreroll && tr.nextS > 17, "a count-in over the loop's end is over after its bar (at beat " + tr.nextS.toFixed(2) + ")");
+  tr.stop();
+  ctx.currentTime = 0;
+}
+
 console.log("swing");
 {
   const { p, t, events, tr } = rig();

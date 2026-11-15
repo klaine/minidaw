@@ -303,10 +303,11 @@ export class Transport {
     this.stepBpm = p.bpm;
     let len = STEP;
     const loop = this.loopRange();
-    const looping = loop && s0 < loop.end - EPS;
-    if (looping && s0 + len > loop.end) len = loop.end - s0;
     const preroll = this.prerollEnd !== null && this.prerollEnd !== undefined && s0 < this.prerollEnd - EPS;
     if (preroll && s0 + len > this.prerollEnd) len = this.prerollEnd - s0;
+    // the count-in doesn't loop: counted in over the loop's end (the playhead just past it), it wrapped and never ended
+    const looping = loop && !preroll && s0 < loop.end - EPS;
+    if (looping && s0 + len > loop.end) len = loop.end - s0;
     if (!this.offline) {
       for (const t of p.tracks) {
         const s = this.session.get(t.id);
@@ -401,7 +402,7 @@ export class Transport {
   notes(ch, clip, a, b, t, spb, remaining) {
     const inst = ch.instrument;
     if (!inst) return;
-    const notes = clip.notes;
+    const notes = clip.notes, due = [];
     for (let i = 0; i < notes.length; i++) {
       const n = notes[i];
       if (n.t < a - EPS || n.t >= b - EPS || n.mute) continue;
@@ -413,9 +414,12 @@ export class Transport {
       if (d <= EPS) continue;
       const late = swingDelay(clip, n.t);
       const on = t + (n.t - a + late) * spb;
-      inst.noteOn(n.p, n.v, on);
-      inst.noteOff(n.p, on + Math.max(EPS, d - late) * spb - 0.0005);
+      // the note-off never before its note-on (a note shorter than its swing delay hung until Stop)
+      due.push({ n, on, off: Math.max(on + 0.001, on + Math.max(EPS, d - late) * spb - 0.0005) });
     }
+    // in the order they sound, whatever their order in the clip (a Drum Rack's choke looks at what plays already)
+    due.sort((x, y) => x.on - y.on);
+    for (const x of due) { inst.noteOn(x.n.p, x.n.v, x.on); inst.noteOff(x.n.p, x.off); }
   }
 
   audio(ch, clip, lp, t, spb, beats) {

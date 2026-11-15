@@ -49,6 +49,9 @@ class App {
       msg.textContent = "It didn't start: " + (e.message || e);
     }), { once: false });
     if ("serviceWorker" in navigator && location.protocol !== "file:" && !/[?&]nosw/.test(location.search)) {
+      // a new version took over from the one this page was loaded by: said, since this page still runs the old one
+      const had = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if (had) toast("minidaw was updated: close and reopen it (or reload) for the new version", 9000); });
       navigator.serviceWorker.register("sw.js").catch((e) => console.warn("service worker", e));
     }
   }

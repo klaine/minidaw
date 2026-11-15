@@ -101,7 +101,14 @@ export class AudioEngine {
     const out = new Map();
     for (const [id, ch] of this.channels) {
       if (ch.instrument && ch.kind !== "drumrack") {
-        try { out.set(id, await ch.instrument.getState()); } catch (e) { console.warn("state", id, e); }
+        // an instrument that doesn't answer (let go of meanwhile, or stuck) keeps the state the project has: a save
+        // must never wait for ever
+        try {
+          const st = await Promise.race([ch.instrument.getState(), new Promise((r) => setTimeout(() => r(undefined), 3000))]);
+          // (an instrument let go of while it was asked answers with nothing in it: not a state to save)
+          const empty = st === undefined || st === null || ("state" in st && st.state == null) || ("record" in st && st.record == null);
+          if (!empty) out.set(id, st);
+        } catch (e) { console.warn("state", id, e); }
       }
     }
     return out;

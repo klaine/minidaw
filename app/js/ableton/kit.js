@@ -107,7 +107,7 @@ export function liveRackXml(rackTpl, padTpl, cells, { now = Date.now() } = {}) {
     };
     return padTpl.replace(/\{\{([A-Z]+)\}\}/g, (m, k) => (k in v ? xmlEsc(v[k]) : m));
   }).join("");
-  return rackTpl.replace("{{PADS}}", pads);
+  return rackTpl.replace("{{PADS}}", () => pads); // a function: "$&" in a pad's name is not a pattern
 }
 
 async function gzip(text) {

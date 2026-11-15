@@ -1,8 +1,10 @@
 // minidaw's service worker: the app works offline once it's installed. Installing caches everything in precache.json
 // (the app, the instruments, their editors), so an active worker means a complete offline copy; until then the page
 // runs from the network. Requests are answered from the cache first, then the network (and cached). A new VERSION
-// (scripts/gen_precache.mjs) installs a new copy and the old one is removed.
-const VERSION = "da9d1ecc65a8";
+// (scripts/gen_precache.mjs) installs a new copy beside the old one and waits: a page that is running keeps the files
+// it started with. The page's boot screen (before Start) tells a waiting worker to take over and reloads, so the new
+// version starts whole; then the old copy is removed.
+const VERSION = "c59a10769add";
 const CACHE = "minidaw-" + VERSION;
 const SHELL = ["./", "index.html", "css/app.css", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "precache.json"];
 
@@ -20,9 +22,13 @@ self.addEventListener("install", (e) => {
         await c.put(f, r);
       }));
     }
-    await self.skipWaiting();
-  })());
+  })().catch(async (err) => {
+    await caches.delete(CACHE); // no half copy left behind: the next visit starts the install again
+    throw err;
+  }));
 });
+
+self.addEventListener("message", (e) => { if (e.data && e.data.t === "skipWaiting") self.skipWaiting(); });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {

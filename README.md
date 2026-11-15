@@ -102,6 +102,13 @@ bridged to the track it plays on.
   a 16-bit, 24-bit or 32-bit float WAV. Stems export as a zip of WAVs.
 - **Projects.** They are saved in the browser's storage, including every instrument's sound. A project can be saved
   as a `.minidaw.json` file with its samples, to move it to another device.
+  - **Saving.** Edits are saved a few seconds after they're made, and at once when the app is left or reloaded.
+    If a save fails (storage full, or the same project saved from another tab since), a "Not saved" notice says so
+    and repeats while it lasts. An untouched tab never writes over newer work.
+  - **Not done yet.** Samples removed from the library stay in the browser's storage, and undo keeps full copies
+    of the project (up to 120), which is heavy for very large projects.
+- **Updates.** A new version installs in the background and starts the next time the app is opened, never in the
+  middle of a session.
 - **Offline.** It is a PWA: once loaded it works without a network, and on iPad you add it with
   Share → Add to Home Screen.
 
@@ -239,6 +246,8 @@ browser profile and fails on any page error. The flows cover:
   the files unpacked and checked in node.
 - **Files and project:** MIDI files; an audio loop; automation; a WAV export; a reload; undo and redo; portrait
   layout; starting offline.
+- **Keeping work:** an edit made just before a reload is saved; a write the browser refuses (a full disk, simulated)
+  is said, and "Saved" is not; a duplicated track's clips are its own.
 
 They act only through the interface: taps, drags, long presses, keys, the file chooser, downloads and file drops.
 They check what a person would notice: sound at the app's meters, the screen, what survives a reload, and exported

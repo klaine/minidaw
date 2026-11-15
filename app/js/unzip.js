@@ -2,7 +2,7 @@
 // directory, then each entry stored or deflated (DecompressionStream "deflate-raw"). No Zip64, no encryption.
 
 /** -> [{ path, bytes: Uint8Array }] for every file (folders, macOS resource forks and dotfiles left out) */
-export async function unzip(input) {
+export async function unzip(input, { want = null } = {}) { // want(path): only those entries are unpacked
   const b = input instanceof Uint8Array ? input : new Uint8Array(input);
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
   // the end of central directory record: the last PK\5\6 within the trailing 64 kB comment window
@@ -26,6 +26,7 @@ export async function unzip(input) {
     const path = (flags & 0x800) ? dec.decode(nameBytes) : latin(nameBytes);
     at += 46 + nlen + xlen + clen;
     if (path.endsWith("/") || skip(path)) continue;
+    if (want && !want(path)) continue; // not asked for: not unpacked (a zip's other files could be huge)
     if (flags & 1) throw new Error(path + " is encrypted");
     if (dv.getUint32(local, true) !== 0x04034b50) throw new Error("a damaged zip (" + path + ")");
     const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);

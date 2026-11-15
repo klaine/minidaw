@@ -51,13 +51,13 @@ export function parseMidi(input) {
       if (s & 0x80) { pos++; if (s < 0xf0) status = s; }
       else s = status; // running status
       if (s === 0xff) {
-        const type = b[pos++], n = vlq(), at = pos;
+        const type = b[pos++], n = Math.min(vlq(), Math.max(0, b.length - pos)), at = pos; // a length past the file's end is the file's end
         if (type === 0x03 && !name) name = text(b, at, n);
         else if (type === 0x51 && bpm === null && n >= 3) bpm = 60000000 / (b[at] << 16 | b[at + 1] << 8 | b[at + 2]);
         else if (type === 0x58 && sig === null && n >= 2) sig = [b[at], 1 << b[at + 1]];
         pos = at + n;
       } else if (s === 0xf0 || s === 0xf7) {
-        const n = vlq(); pos += n;
+        const n = Math.min(vlq(), Math.max(0, b.length - pos)); pos += n;
       } else {
         const type = s & 0xf0, ch = s & 15;
         const d1 = b[pos++], d2 = type === 0xc0 || type === 0xd0 ? 0 : b[pos++];
@@ -87,9 +87,10 @@ export function parseMidi(input) {
   return { format, ppq, bpm: bpm ? Math.round(bpm * 100) / 100 : null, sig, parts: out };
 
   function vlq() {
-    let v = 0, c;
-    do { c = b[pos++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && pos < b.length);
-    return v;
+    // at most four bytes (the format's limit), and never negative: a damaged file must not send the reader backwards
+    let v = 0, c, k = 0;
+    do { c = b[pos++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && pos < b.length && ++k < 4);
+    return v >>> 0;
   }
 }
 

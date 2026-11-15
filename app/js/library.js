@@ -114,8 +114,9 @@ export class Library {
     const roots = new Set();
     const audio = entries.filter((e) => AUDIO_EXT.test(e.path));
     skipped += entries.length - audio.length;
-    for (const e of audio) {
-      n++;
+    try {
+      for (const e of audio) {
+        n++;
       const path = clean(e.path);
       const folder = dirname(path) || "Imported";
       const name = stem(basename(path));
@@ -132,10 +133,14 @@ export class Library {
       this.samples.info.set(id, { id, name });
       added.push(it);
       roots.add(folder.split("/")[0]);
-      if (onProgress && n % 8 === 0) onProgress(n, audio.length);
+        if (onProgress && n % 8 === 0) onProgress(n, audio.length);
+        if (n % 40 === 0) await this.save();
+      }
+    } finally {
+      // whatever happened (storage full part-way): what was stored is listed, so it can be seen and used
+      await this.save().catch(() => {});
+      this.emit();
     }
-    await this.save();
-    this.emit();
     return { added, skipped, roots: [...roots] };
   }
 
@@ -146,7 +151,7 @@ export class Library {
 
   /** A zip: its folders under a folder named after it (unless it holds a single folder already) */
   async importZip(file, onProgress) {
-    const files = (await unzip(await file.arrayBuffer())).filter((f) => AUDIO_EXT.test(f.path));
+    const files = await unzip(await file.arrayBuffer(), { want: (path) => AUDIO_EXT.test(path) });
     if (!files.length) return { added: [], skipped: 0, roots: [] };
     const tops = new Set(files.map((f) => f.path.split("/")[0]));
     const single = tops.size === 1 && files.every((f) => f.path.includes("/"));

@@ -115,7 +115,7 @@ export class Topbar {
     const app = this.app, store = app.store;
     menu(anchor, [
       { label: "Projects…", onClick: () => openProjects(app) },
-      { label: "Save now", hint: "⌘S", onClick: () => app.save().then(() => toast("Saved")) },
+      { label: "Save now", hint: "⌘S", onClick: () => app.save().then((ok) => { if (ok) toast("Saved"); }) },
       { label: "New project", onClick: () => app.newProject() },
       "-",
       { label: "Recording settings…", hint: "count-in", onClick: () => recordSettings(app) },

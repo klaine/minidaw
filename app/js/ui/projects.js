@@ -65,13 +65,24 @@ export async function exportProjectFile(app) {
   const ids = new Set();
   for (const c of Object.values(p.clips)) if (c.type === "audio" && !c.sampleId.startsWith("builtin:")) ids.add(c.sampleId);
   for (const t of p.tracks) if (t.instrument && t.instrument.kind === "drumrack") for (const pad of t.instrument.state.pads) if (!pad.sample.startsWith("builtin:")) ids.add(pad.sample);
-  const samples = [];
-  for (const id of ids) {
-    const rec = await db.loadSample(id);
-    if (rec) samples.push({ id, name: rec.name, type: rec.type, data: b64.enc(rec.bytes) });
+  // the file in parts, a sample at a time: as one string a project with a few hundred MB of samples was more than
+  // the browser can hold, and the button did nothing
+  try {
+    const parts = ['{"minidaw":1,"project":', JSON.stringify(p), ',"samples":['];
+    let first = true;
+    for (const id of ids) {
+      const rec = await db.loadSample(id);
+      if (!rec) continue;
+      parts.push((first ? "" : ",") + JSON.stringify({ id, name: rec.name, type: rec.type, data: b64.enc(rec.bytes) }));
+      first = false;
+    }
+    parts.push("]}");
+    const blob = new Blob(parts, { type: "application/json" });
+    await saveFile(blob, (p.name || "project").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + ".minidaw.json");
+  } catch (e) {
+    console.error(e);
+    toast("The project file couldn't be made: " + ((e && e.message) || e), 8000);
   }
-  const blob = new Blob([JSON.stringify({ minidaw: 1, project: p, samples })], { type: "application/json" });
-  await saveFile(blob, (p.name || "project").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") + ".minidaw.json");
 }
 
 async function importProject(app, s) {

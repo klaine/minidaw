@@ -7,7 +7,7 @@ import { SampleBank } from "./audio/samples.js";
 import { AudioEngine } from "./audio/engine.js";
 import { Transport } from "./audio/transport.js";
 import { prepareContext, loadMeta } from "./audio/instruments.js";
-import { h, debounce, deepCopy } from "./util.js";
+import { h, debounce, deepCopy, uid } from "./util.js";
 import { toast } from "./ui/controls.js";
 import { Topbar } from "./ui/topbar.js";
 import { ArrangeView } from "./ui/arrange.js";
@@ -27,6 +27,7 @@ class App {
     this.store = new Store(newProject());
     this.ctx = null;
     this.views = {};
+    this.loadedAt = new Map(); // project id -> the updatedAt of the copy this window last loaded or saved
   }
 
   async boot() {
@@ -44,15 +45,29 @@ class App {
     btn.textContent = "Start";
     btn.addEventListener("click", () => this.start().catch((e) => {
       console.error(e);
+      // from the beginning next time: "Try again" did nothing while the half-started audio was kept
+      try { if (this.ctx) this.ctx.close(); } catch (_) { /* already closed */ }
+      this.ctx = null;
       btn.disabled = false;
       btn.textContent = "Try again";
       msg.textContent = "It didn't start: " + (e.message || e);
     }), { once: false });
     if ("serviceWorker" in navigator && location.protocol !== "file:" && !/[?&]nosw/.test(location.search)) {
-      // a new version took over from the one this page was loaded by: said, since this page still runs the old one
-      const had = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener("controllerchange", () => { if (had) toast("minidaw was updated: close and reopen it (or reload) for the new version", 9000); });
-      navigator.serviceWorker.register("sw.js").catch((e) => console.warn("service worker", e));
+      // A new version installs beside the running one and waits (sw.js). Here on the boot screen, before Start,
+      // it's told to take over and the page reloads into it, whole. Once the song is open it's only said: a running
+      // session keeps the files it started with.
+      const sw = navigator.serviceWorker, had = !!sw.controller;
+      let reloading = false;
+      sw.addEventListener("controllerchange", () => { if (had && !this.ctx && !reloading) { reloading = true; location.reload(); } });
+      sw.register("sw.js").then((reg) => {
+        const ready = () => {
+          if (!had || !reg.waiting) return;
+          if (!this.ctx) reg.waiting.postMessage({ t: "skipWaiting" });
+          else toast("A new version of minidaw is ready: it starts the next time you open it", 8000);
+        };
+        ready();
+        reg.addEventListener("updatefound", () => { const w = reg.installing; if (w) w.addEventListener("statechange", () => { if (w.state === "installed") ready(); }); });
+      }).catch((e) => console.warn("service worker", e));
     }
   }
 
@@ -97,8 +112,8 @@ class App {
     this.loop();
     window.addEventListener("keydown", (e) => this.onKey(e));
     window.addEventListener("keyup", (e) => this.onKeyUp(e));
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this.save(); else this.keepAwake(); });
-    window.addEventListener("pagehide", () => this.save());
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.saveLeaving(); else this.keepAwake(); });
+    window.addEventListener("pagehide", () => this.saveLeaving());
     setInterval(() => { if (this.store.ui.dirty) this.save(); }, 15000);
     // iOS stops the audio when the app is left, a call comes in or Siri speaks ("interrupted"), and may need one more
     // touch at the start: any touch, and coming back to the app, starts it again
@@ -254,12 +269,17 @@ class App {
   async openProject(p, { quiet } = {}) {
     if (this.transport && this.transport.playing) this.transport.stop();
     if (this.transport) this.transport.session.clear();
+    // what this window knows of the stored copy: a save refuses to write over a newer one (another tab's)
+    const stored = await db.loadProject(p.id).catch(() => null);
+    if (stored) this.loadedAt.set(p.id, stored.updatedAt); else this.loadedAt.delete(p.id);
     this.store.setProject(p);
     // samples first (the drum rack and audio clips need their buffers), then the instruments with their states
     const ids = [];
     for (const c of Object.values(p.clips)) if (c.type === "audio") ids.push(c.sampleId);
     for (const t of p.tracks) if (t.instrument && t.instrument.kind === "drumrack") for (const pad of t.instrument.state.pads) ids.push(pad.sample);
     await this.samples.loadAll(ids, this.ctx);
+    const silent = [...new Set(ids)].filter((id) => this.samples.failed.has(id));
+    if (silent.length) toast(`${silent.length} sample${silent.length === 1 ? "" : "s"} can't be played in this browser (${silent.slice(0, 3).map((id) => this.samples.name(id)).join(", ")}${silent.length > 3 ? "…" : ""}): silent here, kept in the project`, 8000);
     this.engine.dispose();
     await this.engine.sync(p);
     this.transport.position = 0;
@@ -271,23 +291,52 @@ class App {
 
   saveSoon = debounce(() => this.save(), 2500);
 
-  /** The project with every instrument's current sound, into IndexedDB */
+  /**
+   * The project with every instrument's current sound, into IndexedDB. -> true if it's saved. A save asked for while
+   * one runs is done right after it. A failure is said (and said again when saving works once more): edits that
+   * aren't being saved must not look saved.
+   */
   async save() {
-    if (!this.engine || this.saving) return;
-    this.saving = true;
-    try {
-      const states = await this.engine.collectStates();
-      const p = this.store.project;
-      for (const t of p.tracks) if (states.has(t.id) && t.instrument) t.instrument.state = states.get(t.id);
-      await db.saveProject(deepCopy(p));
-      await db.set("lastProject", p.id);
-      this.store.ui.dirty = false;
-      this.topbar.update();
-    } catch (e) {
-      console.error("save", e);
-    } finally {
-      this.saving = false;
-    }
+    if (!this.engine) return false;
+    if (this.saving) { this.saveAgain = true; return this.saving; }
+    const job = this.saving = (async () => {
+      try {
+        const states = await this.engine.collectStates();
+        const p = this.store.project;
+        for (const t of p.tracks) if (states.has(t.id) && t.instrument) t.instrument.state = states.get(t.id);
+        const copy = deepCopy(p);
+        await db.saveProject(copy, { since: this.loadedAt.get(p.id) });
+        this.loadedAt.set(p.id, copy.updatedAt);
+        await db.set("lastProject", p.id);
+        if (this.store.project === p && p.updatedAt === copy.updatedAt) this.store.ui.dirty = false;
+        if (this.saveFailed) { this.saveFailed = null; toast("Saving works again: the project is saved"); }
+        this.topbar.update();
+        return true;
+      } catch (e) {
+        console.error("save", e);
+        const stale = e && e.name === "StaleProject";
+        const why = stale ? "this project was saved from another tab or window since this one opened it" : (e && e.name === "QuotaExceededError" ? "the browser's storage is full" : (e && e.message) || String(e));
+        // said at the first failure, and again every minute while it lasts
+        if (!this.saveFailed || performance.now() - this.saveFailed > 60000) {
+          this.saveFailed = performance.now();
+          toast(stale ? "Not saved: " + why + ". Reload to see that version, or use Projects → Save current as file to keep this one."
+            : "Not saved: " + why + ". Your changes are only in this window: use Projects → Save current as file to keep them.", 12000);
+        }
+        return false;
+      }
+    })();
+    const ok = await job;
+    this.saving = null;
+    if (this.saveAgain) { this.saveAgain = false; return this.save(); }
+    return ok;
+  }
+  /** The page is going away or out of sight: the project as it is, written at once (the full save, which asks the
+   *  instruments for their sound first, may not get the time), then the full save */
+  saveLeaving() {
+    if (!this.engine || !this.store.ui.dirty) return; // untouched: nothing to write (an idle tab must not write over newer work)
+    const copy = deepCopy(this.store.project);
+    if (db.saveProjectNow(copy)) this.loadedAt.set(copy.id, copy.updatedAt);
+    this.save();
   }
 
   async newProject() {
@@ -336,7 +385,18 @@ class App {
     copy.id = t0.id;
     copy.name = src.name + " 2";
     if (states.has(src.id)) copy.instrument.state = states.get(src.id);
-    this.store.update((p) => p.tracks.splice(p.tracks.indexOf(src) + 1, 0, copy), "tracks");
+    this.store.update((p) => {
+      // its own clips (copies) and placements: editing the copy must not rewrite the original
+      const own = new Map();
+      const clipFor = (id) => {
+        if (!id || !p.clips[id]) return id;
+        if (!own.has(id)) { const c = deepCopy(p.clips[id]); c.id = uid("c"); p.clips[c.id] = c; own.set(id, c.id); }
+        return own.get(id);
+      };
+      copy.slots = copy.slots.map(clipFor);
+      copy.arrangement = copy.arrangement.map((pl) => ({ ...pl, id: uid("a"), clipId: clipFor(pl.clipId) }));
+      p.tracks.splice(p.tracks.indexOf(p.tracks.find((t) => t.id === src.id)) + 1, 0, copy);
+    }, "tracks");
   }
 
   async changeInstrument(id, kind) {
@@ -415,7 +475,7 @@ class App {
     if (document.querySelector(".sheet, .menu-veil")) return; // a dialog or a menu is open: keys aren't for what's behind it
     const k = e.key;
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) this.store.redo(); else this.store.undo(); return; }
-    if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "s") { e.preventDefault(); this.save().then(() => toast("Saved")); return; }
+    if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "s") { e.preventDefault(); this.save().then((ok) => { if (ok) toast("Saved"); }); return; }
     if (k === " ") { e.preventDefault(); this.togglePlay(); return; }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (k === "Tab") { e.preventDefault(); this.setView(this.store.ui.view === "arrange" ? "session" : "arrange"); return; }

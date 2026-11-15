@@ -2,9 +2,11 @@
 const DB_NAME = "minidaw";
 let dbp = null;
 
+let handle = null; // the open database, for a write that can't wait (the page is going away)
+
 function open() {
   if (!dbp) {
-    dbp = new Promise((resolve, reject) => {
+    const mine = dbp = new Promise((resolve, reject) => {
       const r = indexedDB.open(DB_NAME, 1);
       r.onupgradeneeded = () => {
         const db = r.result;
@@ -12,25 +14,62 @@ function open() {
         if (!db.objectStoreNames.contains("samples")) db.createObjectStore("samples", { keyPath: "id" });
         if (!db.objectStoreNames.contains("misc")) db.createObjectStore("misc");
       };
-      r.onsuccess = () => resolve(r.result);
+      r.onsuccess = () => {
+        const db = handle = r.result;
+        // the browser may drop the connection (storage pressure, another tab upgrading): the next call opens it again
+        const gone = () => { if (dbp === mine) { dbp = null; handle = null; } };
+        db.onclose = gone;
+        db.onversionchange = () => { db.close(); gone(); };
+        resolve(db);
+      };
       r.onerror = () => reject(r.error);
+      r.onblocked = () => reject(new Error("the database is in use by another window"));
     });
+    mine.catch(() => { if (dbp === mine) dbp = null; }); // a failed open is tried again by the next call
   }
   return dbp;
 }
 
-function run(store, mode, fn) {
+function run(store, mode, fn, again = true) {
   return open().then((db) => new Promise((resolve, reject) => {
-    const tx = db.transaction(store, mode);
-    const req = fn(tx.objectStore(store));
+    let tx;
+    try { tx = db.transaction(store, mode); } catch (e) {
+      // a connection that closed without saying so: once more on a new one
+      dbp = null; handle = null;
+      if (again) { run(store, mode, fn, false).then(resolve, reject); return; }
+      reject(e); return;
+    }
+    const req = fn(tx.objectStore(store), tx);
     tx.oncomplete = () => resolve(req ? req.result : undefined);
     tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("the write was refused"));
   }));
 }
 
 export const db = {
-  saveProject: (p) => run("projects", "readwrite", (s) => s.put(p)),
+  /**
+   * since: the updatedAt of the copy this window last loaded or saved. If the stored project is newer (another tab
+   * or window saved it since), nothing is written and the error's name is "StaleProject".
+   */
+  saveProject(p, { since } = {}) {
+    let stale = false;
+    return run("projects", "readwrite", (s, tx) => {
+      if (since === undefined) return s.put(p);
+      const g = s.get(p.id);
+      g.onsuccess = () => { if (g.result && g.result.updatedAt > since) { stale = true; tx.abort(); } else s.put(p); };
+      return null;
+    }).catch((e) => {
+      if (!stale) throw e;
+      const err = new Error("another window saved this project since");
+      err.name = "StaleProject";
+      throw err;
+    });
+  },
+  /** The project written at once, without waiting for anything (the page is going away). true if it could be sent */
+  saveProjectNow(p) {
+    if (!handle) return false;
+    try { const tx = handle.transaction("projects", "readwrite"); tx.objectStore("projects").put(p); if (tx.commit) tx.commit(); return true; } catch (_) { return false; }
+  },
   loadProject: (id) => run("projects", "readonly", (s) => s.get(id)),
   deleteProject: (id) => run("projects", "readwrite", (s) => s.delete(id)),
   async listProjects() {

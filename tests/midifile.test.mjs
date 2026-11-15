@@ -44,5 +44,27 @@ console.log("not MIDI");
   check(threw, "a file that isn't MIDI is refused");
 }
 
+console.log("damaged files");
+{
+  const head = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 0x4d, 0x54, 0x72, 0x6b, 0, 0, 0, 12];
+  // a meta event whose length runs to five bytes (it overflowed to a negative number: the reader went backwards, for ever)
+  const t0 = Date.now();
+  const a = parseMidi(new Uint8Array([...head, 0, 0xff, 0x03, 0xff, 0xff, 0xff, 0xff, 0x78, 0x41, 0, 0xff, 0x2f, 0]));
+  check(a && Array.isArray(a.parts) && Date.now() - t0 < 500, "a meta length that overflows: read to the end, at once");
+  // a track name said to be 200 MB long in a 31-byte file
+  const t1 = Date.now();
+  const b = parseMidi(new Uint8Array([...head, 0, 0xff, 0x03, 0xdf, 0xad, 0xe2, 0x00, 0x41, 0x42, 0, 0xff, 0x2f, 0]));
+  check(b && Date.now() - t1 < 500, "a length far past the file's end: the file's end");
+  let threw = 0, hung = 0, seed = 5;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let i = 0; i < 3000; i++) {
+    const n = 4 + Math.floor(rnd() * 24), body = Array.from({ length: n }, () => Math.floor(rnd() * 256));
+    const start = Date.now();
+    try { parseMidi(new Uint8Array([...head.slice(0, 21), n, ...body])); } catch (_) { threw++; }
+    if (Date.now() - start > 200) hung++;
+  }
+  check(hung === 0, "3000 random tracks: none hangs (" + threw + " refused with an error)");
+}
+
 console.log(failures ? `${failures} FAILED` : "all passed");
 process.exit(failures ? 1 : 0);

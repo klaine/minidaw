@@ -845,6 +845,39 @@ const FLOWS = {
     assert.strictEqual(await u.state(() => window.minidaw.store.ui.view), "mixer", "and Mixer opens");
   },
 
+  async "keeping work: an edit just before a reload, a full disk said, a duplicated track on its own"(u) {
+    await u.boot();
+    // an edit, and the page reloaded at once (before the autosave's 2.5 s): it's there afterwards
+    await u.header("Drums").locator(".th-btn.mute").tap();
+    await u.until(() => window.minidaw.store.project.tracks[0].mixer.mute === true, "the mute");
+    await u.page.reload();
+    await u.boot();
+    assert.strictEqual((await u.track("Drums")).mixer.mute, true, "the edit made just before leaving was saved");
+    // a duplicated track has its own clips: changing the copy leaves the original alone
+    const hb = await u.box(u.header("Bass"));
+    await u.longPressAt(hb.x + 60, hb.y + 14);
+    await u.menuItem("Duplicate track");
+    await u.until(() => window.minidaw.store.project.tracks.some((t) => t.name === "Bass 2"), "the copy");
+    const pair = await u.state(() => { const p = window.minidaw.store.project, a = p.tracks.find((t) => t.name === "Bass"), b = p.tracks.find((t) => t.name === "Bass 2"); return { a: a.arrangement.map((x) => [x.id, x.clipId]), b: b.arrangement.map((x) => [x.id, x.clipId]), notes: p.clips[b.arrangement[0].clipId].notes.length }; });
+    assert.ok(pair.b.length === pair.a.length && pair.b.every(([id, clip], i) => id !== pair.a[i][0] && clip !== pair.a[i][1]) && pair.notes > 0, "the copy's clips and placements are its own: " + JSON.stringify(pair));
+    const spot = await u.lanePoint("Bass 2", 34);
+    await u.tapAt(spot.x, spot.y);
+    await u.tap("+12");
+    const pitches = await u.state(() => { const p = window.minidaw.store.project; const lo = (n) => Math.min(...p.clips[p.tracks.find((t) => t.name === n).arrangement[0].clipId].notes.map((x) => x.p)); return [lo("Bass"), lo("Bass 2")]; });
+    assert.strictEqual(pitches[1], pitches[0] + 12, "the copy went up an octave, the original stayed: " + pitches);
+    // the disk is full (the browser refuses the write): it's said, and "Saved" is not
+    u.expectErrors = [/quota has been exceeded/i, /^save /]; // the refused write, and the app's own log of the failed save
+    await u.page.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (...a) { if (this.name === "projects") throw new DOMException("The quota has been exceeded.", "QuotaExceededError"); return put.apply(this, a); };
+    });
+    await u.tap("Projects and settings");
+    await u.menuItem("Save now");
+    await u.page.locator(".toast", { hasText: "Not saved" }).waitFor({ timeout: 8000 });
+    assert.strictEqual(await u.page.locator(".toast", { hasText: /^Saved$/ }).count(), 0, "it doesn't say Saved");
+    assert.ok((await u.page.locator(".toast", { hasText: "Not saved" }).first().textContent()).includes("Save current as file"), "and says how to keep the work");
+  },
+
   async "session: launch a scene, stop a track, back to the arrangement"(u) {
     await u.boot();
     await u.tab("Session");
@@ -1133,8 +1166,11 @@ const FLOWS = {
     const t0 = Date.now();
     let err = null;
     try {
-      await Promise.race([FLOWS[name](new User(page, base), { context }), new Promise((_, rej) => setTimeout(() => rej(new Error("the flow took over 120 s")), 120000))]);
-      if (errors.length) throw new Error("page errors: " + errors.join(" | "));
+      const user = new User(page, base);
+      await Promise.race([FLOWS[name](user, { context }), new Promise((_, rej) => setTimeout(() => rej(new Error("the flow took over 120 s")), 120000))]);
+      // errors a flow brings about on purpose (a disk made full) are its own to name: user.expectErrors = [/.../]
+      const unexpected = errors.filter((e) => !(user.expectErrors || []).some((re) => re.test(e)));
+      if (unexpected.length) throw new Error("page errors: " + unexpected.join(" | "));
     } catch (e) {
       err = e;
       await page.screenshot({ path: path.join(OUT, name.replace(/[^\w]+/g, "-") + ".png") }).catch(() => {});

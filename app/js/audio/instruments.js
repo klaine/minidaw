@@ -137,7 +137,14 @@ class WorkletInstrument {
   connect(dest) { this.node.connect(dest); }
   disconnect() { try { this.node.disconnect(); } catch (_) { /* not connected */ } }
   /** Let go of it: its processor ends too (a processor that keeps returning true is rendered, and kept, for ever) */
-  dispose() { this.stop(); this.disconnect(); try { this.post({ t: "dispose" }); } catch (_) { /* closed */ } this.node.port.onmessage = null; }
+  dispose() {
+    this.stop(); this.disconnect();
+    try { this.post({ t: "dispose" }); } catch (_) { /* closed */ }
+    this.node.port.onmessage = null;
+    // what was asked of it and not answered yet is answered with nothing (a save waiting for its state goes on)
+    for (const fn of this.pending.values()) { try { fn({}); } catch (_) { /* its asker is gone */ } }
+    this.pending.clear();
+  }
   midi(m, time = 0) { this.queue.push({ time, m }); if (!time) this.flushEvents(); }
   noteOn(note, vel, time = 0) { this.midi([0x90, note & 127, Math.max(1, Math.min(127, vel | 0))], time); }
   noteOff(note, time = 0) { this.midi([0x80, note & 127, 0], time); }

@@ -13,7 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
-const { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip } = require("./files.cjs");
+const { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip, fakeMidi } = require("./files.cjs");
 
 const ROOT = path.join(__dirname, "..", "..");
 const APP = path.join(ROOT, "app");
@@ -588,6 +588,167 @@ const FLOWS = {
       assert.strictEqual(b.match(/<ReceivingNote Value="(\d+)"/)[1], String(92 - i), "pad " + (i + 1) + "'s note");
       assert.strictEqual(+b.match(/<DefaultDuration Value="(\d+)"/)[1], readWav(lz.get("Night Kit/" + rel)).frames, "its length");
     }
+  },
+
+  async "keys: pads in the song's key, one-finger chords, and Keys stays as tracks change"(u) {
+    await u.boot();
+    await u.header("Bass").locator(".th-name").tap();
+    await u.tab("Keys");
+    const keySel = u.page.getByLabel("Key", { exact: true }), scaleSel = u.page.getByLabel("Scale", { exact: true });
+    assert.deepStrictEqual([await keySel.inputValue(), await scaleSel.inputValue()], ["9", "minor"], "the demo is in A minor");
+    await u.page.locator(".keys-layout .seg-btn", { hasText: "Pads" }).tap();
+    const padNotes = () => u.page.locator(".npad").evaluateAll((els) => els.map((e) => +e.dataset.note));
+    let notes = await padNotes();
+    assert.ok(notes.length >= 16 && notes.length % 8 === 0, "rows of 8 pads: " + notes.length);
+    assert.ok(notes.every((n) => [9, 11, 0, 2, 4, 5, 7].includes(n % 12)), "the pads hold only A minor's notes");
+    const roots = await u.page.locator(".npad.root").evaluateAll((els) => els.map((e) => +e.dataset.note % 12));
+    assert.ok(roots.length >= 2 && roots.every((r) => r === 9), "the As are marked");
+    const pad = await u.box(u.page.locator(".npad.root").last());
+    await u.page.mouse.move(pad.x + pad.width / 2, pad.y + pad.height * 0.8);
+    await u.page.mouse.down();
+    const lvl = await u.level("Bass", 600);
+    await u.page.mouse.up();
+    assert.ok(db(lvl) > -45, `a pad plays the bass (${db(lvl).toFixed(1)} dBFS)`);
+    // another key: the pads follow, and it's the song's (two undo steps bring A minor back)
+    await keySel.selectOption("2");
+    await u.page.getByLabel("Scale", { exact: true }).selectOption("dorian");
+    notes = await padNotes();
+    assert.ok(notes.every((n) => [2, 4, 5, 7, 9, 11, 0].includes(n % 12)) && notes.some((n) => n % 12 === 11), "D dorian's notes: " + [...new Set(notes.map((n) => n % 12))]);
+    assert.deepStrictEqual(await u.state(() => [window.minidaw.store.project.key, window.minidaw.store.project.scale]), [2, "dorian"], "the key is the project's");
+    await u.tap("Undo"); await u.tap("Undo");
+    await u.until(() => document.querySelector('[aria-label="Scale"]').value === "minor" && document.querySelector('[aria-label="Key"]').value === "9", "undo to bring A minor back");
+    // picking another track keeps the Keys: it's the one played now
+    await u.header("Lead").locator(".th-name").tap();
+    assert.strictEqual(await u.state(() => window.minidaw.store.ui.panel), "keys", "still on Keys");
+    await u.page.locator(".npad").first().waitFor();
+    await u.header("Drums").locator(".th-name").tap();
+    assert.strictEqual(await u.page.locator(".keys-pads .pad").count(), 16, "a Drum Rack: its 16 pads");
+    await u.header("Bass").locator(".th-name").tap();
+    // chords: one pad, one chord of the key
+    await u.page.locator(".keys-layout .seg-btn", { hasText: "Chords" }).tap();
+    const names = await u.page.locator(".chord:not(.seventh) b").allTextContents();
+    assert.deepStrictEqual(names, ["Am", "B°", "C", "Dm", "Em", "F", "G"], "A minor's triads");
+    assert.strictEqual(await u.page.locator(".chord.seventh b").first().textContent(), "Am7", "and its sevenths above them");
+    for (const name of ["Chord Am", "Chord F"]) {
+      const b = await u.box(u.page.getByLabel(name, { exact: true }));
+      await u.tapAt(b.x + b.width / 2, b.y + b.height * 0.7);
+      await u.page.waitForTimeout(450);
+    }
+    await u.page.waitForTimeout(400);
+    await u.tap("Capture");
+    const bass = await u.track("Bass");
+    const pl = bass.arrangement.find((x) => x.start === 0);
+    const clip = pl && await u.state((id) => window.minidaw.store.project.clips[id], pl.clipId);
+    // Capture holds what was just played: the pad from before, then the two chords
+    const played = clip ? [...clip.notes].sort((x, y) => x.t - y.t || x.p - y.p) : [];
+    assert.strictEqual(played.length, 7, "the pad's note and two chords of three: " + JSON.stringify(played.map((n) => n.p)));
+    assert.deepStrictEqual(played.slice(1).map((n) => n.p), [57, 60, 64, 65, 69, 72], "A C E, then F A C");
+    assert.ok(Math.abs(played[1].t - played[3].t) < 0.01 && played[4].t > played[3].t + 0.5, "a chord's notes start together, the second chord after the first");
+  },
+
+  async "a new song by touch: New clip, steps, Loop clip, a bigger panel"(u) {
+    await u.boot();
+    await u.tap("Projects and settings");
+    await u.menuItem("New project");
+    await u.until(() => window.minidaw.store.project.tracks.length === 3 && !Object.keys(window.minidaw.store.project.clips).length, "the new project");
+    await u.tab("Clip");
+    await u.page.getByRole("button", { name: /New clip on Drums at the playhead/ }).tap();
+    await u.step("Kick", 1).tap();
+    await u.step("Kick", 9).tap();
+    await u.step("Snare", 5).tap();
+    const drums = await u.track("Drums");
+    assert.deepStrictEqual(drums.arrangement.map((x) => [x.start, x.length]), [[0, 4]], "a one-bar clip at bar 1");
+    // Loop clip: it plays round and round, with the loop over it
+    await u.tap("▶ Loop clip");
+    assert.ok(db(await u.level("Drums", 1200)) > -35, "the beat is heard");
+    await u.page.waitForTimeout(1600); // 2.8 s at 120: past the bar's end
+    const st = await u.state(() => ({ playing: window.minidaw.transport.playing, loop: window.minidaw.store.project.loop, s: window.minidaw.transport.now().s }));
+    assert.ok(st.playing && st.loop.on && st.loop.start === 0 && st.loop.end === 4 && st.s < 4, "it loops over the clip: " + JSON.stringify(st));
+    await u.page.locator(".st-cell.now").first().waitFor();
+    await u.tap("■ Stop");
+    await u.until(() => !window.minidaw.transport.playing, "the stop");
+    await u.page.getByRole("button", { name: "▶ Loop clip" }).waitFor();
+    // Bigger: the panel over most of the screen, more of the pads' rows in sight; Smaller: back
+    const rowsSeen = () => u.page.locator(".st-name").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }).length);
+    const h0 = (await u.box(u.page.locator(".panel"))).height, rows0 = await rowsSeen();
+    await u.tap("⤢ Bigger");
+    const h1 = (await u.box(u.page.locator(".panel"))).height, rows1 = await rowsSeen();
+    assert.ok(h1 > IPAD.height * 0.55 && rows1 >= rows0 + 5, `a taller panel shows more rows (${rows0} -> ${rows1}, ${Math.round(h0)} -> ${Math.round(h1)} px)`);
+    assert.ok(await u.header("Drums").isVisible(), "the arrangement's first track is still in sight");
+    await u.tap("⤡ Smaller");
+    assert.ok(near((await u.box(u.page.locator(".panel"))).height, h0, 3), "and back to the size it had");
+    // in the session the button fills the track's next empty slot; a synth's clip opens in the piano roll
+    await u.tab("Session");
+    await u.page.locator(".ses-head", { hasText: "Crest" }).tap();
+    await u.tab("Clip");
+    await u.page.getByRole("button", { name: /New clip in Crest's next empty slot/ }).tap();
+    await u.page.locator(".pr-canvas").waitFor();
+    const crest = await u.track("Crest");
+    assert.ok(crest.slots[0] && !crest.slots[1], "a clip in Crest's first slot");
+  },
+
+  async "MIDI: a keyboard plays the track, a Launchpad Pro Mk3 runs the session (stand-in devices)"(u) {
+    await u.page.addInitScript(fakeMidi);
+    await u.boot();
+    const midi = (fn, ...args) => u.state(({ fn, args }) => window.__midi[fn](...args), { fn, args });
+    await u.header("Bass").locator(".th-name").tap();
+    await midi("plug", ["Keystation 49"]);
+    await u.page.locator(".toast", { hasText: "MIDI: Keystation 49 connected" }).waitFor();
+    await midi("from", "Keystation 49", [0x90, 45, 100]);
+    assert.ok(db(await u.level("Bass", 500)) > -45, "a key on the keyboard plays the selected track");
+    // let go after another track was picked: the note ends where it began (nothing hangs)
+    await u.header("Lead").locator(".th-name").tap();
+    await midi("from", "Keystation 49", [0x80, 45, 0]);
+    await u.page.waitForTimeout(2500);
+    assert.ok((await u.level("Bass", 400)) < 0.003, "the bass note ended though Lead is selected now");
+    // the Launchpad: three ports; its DAW port becomes the session's grid (SysEx asked for once)
+    const LP = "Launchpad Pro MK3 LPProMK3 ";
+    await midi("plug", [LP + "MIDI", LP + "DIN", LP + "DAW"]);
+    await u.page.locator(".toast", { hasText: "MIDI: Launchpad Pro Mk3 connected" }).waitFor();
+    await u.until(() => window.__midi.sent("Launchpad Pro MK3 LPProMK3 DAW").length >= 3, "the Launchpad to be set up");
+    assert.deepStrictEqual(await u.state(() => window.__midi.asked), [false, true], "plain MIDI first, SysEx once a Launchpad is there");
+    const H = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0e];
+    const leds = async () => { // what the Launchpad shows: its LED messages, in order, the last word on each LED
+      const m = new Map();
+      for (const msg of await midi("sent", LP + "DAW")) if (msg[6] === 3 && msg.length > 8) { let i = 7; while (i < msg.length - 1) { const n = { 0: 3, 1: 4, 2: 3, 3: 5 }[msg[i]]; m.set(msg[i + 1], msg.slice(i, i + n)); i += n; } }
+      return m;
+    };
+    const sent = await midi("sent", LP + "DAW");
+    assert.deepStrictEqual([sent[0], sent[1]], [[...H, 0x10, 1, 0xf7], [...H, 0, 0, 0, 0, 0xf7]], "into DAW mode, on the Session layout");
+    assert.strictEqual((await midi("sent", LP + "MIDI")).length, 0, "nothing is sent to its other ports");
+    let l = await leds();
+    assert.strictEqual(l.get(81)[0], 3, "top left (Drums, scene 1: Beat A): lit in colour");
+    assert.deepStrictEqual(l.get(82), [0, 82, 0], "Bass has no clip in scene 1: off");
+    // the pad of Bass in scene 2: its clip plays, heard, lit, and shown on the screen's session
+    await midi("from", LP + "DAW", [0x90, 72, 100]);
+    await midi("from", LP + "DAW", [0x90, 72, 0]);
+    assert.ok(db(await u.level("Bass", 1500)) > -35, "the pad launched the bassline");
+    l = await leds();
+    assert.deepStrictEqual(l.get(72), [2, 72, 21], "the pad pulses green");
+    assert.deepStrictEqual(l.get(20).slice(2), [0, 127, 0], "Play is lit");
+    await u.tab("Session");
+    await u.page.locator(".ses-slot.playing", { hasText: "Bassline" }).waitFor();
+    // the right column launches a scene: scene 3, "Full", brings the lead in on the next bar
+    await midi("from", LP + "DAW", [0xb0, 69, 127]);
+    await u.page.locator(".ses-slot.playing", { hasText: "Hook" }).waitFor({ timeout: 6000 });
+    assert.ok(db(await u.level("Lead", 2500)) > -45, "the scene's lead plays");
+    // a note from the Launchpad's Note mode (its MIDI port) is a keyboard's: it plays, and isn't a pad of the session
+    const launched = await u.state(() => JSON.stringify([...window.minidaw.transport.session].map(([k, v]) => [k, v.playing && v.playing.scene])));
+    await midi("from", LP + "MIDI", [0x90, 81, 100]);
+    await midi("from", LP + "MIDI", [0x80, 81, 0]);
+    assert.strictEqual(await u.state(() => JSON.stringify([...window.minidaw.transport.session].map(([k, v]) => [k, v.playing && v.playing.scene]))), launched, "the session is as it was");
+    // Record Arm, then the fifth track button: Lead is armed (as its ● on the screen); Play stops it all
+    await midi("from", LP + "DAW", [0xb0, 1, 127]);
+    await midi("from", LP + "DAW", [0xb0, 105, 127]);
+    assert.strictEqual((await u.track("Lead")).mixer.arm, true, "Lead is armed");
+    await midi("from", LP + "DAW", [0xb0, 20, 127]);
+    await u.until(() => !window.minidaw.transport.playing, "the Launchpad's Play to stop it");
+    l = await leds();
+    assert.deepStrictEqual(l.get(20).slice(2), [0, 14, 0], "Play is dim again");
+    // unplugged: said, and its DAW mode was left
+    await midi("unplug", "LPProMK3");
+    await u.page.locator(".toast", { hasText: "MIDI: Launchpad Pro Mk3 disconnected" }).waitFor();
+    assert.strictEqual(await u.state(() => window.minidaw.midi.launchpad.connected), false, "the grid is let go");
   },
 
   async "session: launch a scene, stop a track, back to the arrangement"(u) {

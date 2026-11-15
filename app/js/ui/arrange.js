@@ -95,7 +95,7 @@ export class ArrangeView {
             btn("A", t.lanes.length > 0, "auto", () => this.addLane(t), "Show an automation lane"))),
         meter);
       gestures(row, {
-        tap: () => store.select({ selTrack: t.id, panel: store.ui.panel === "clip" && store.ui.selClip ? "clip" : "device" }) || this.renderHeaders() || this.surf.draw(),
+        tap: () => store.select({ selTrack: t.id, panel: store.ui.panel === "clip" && store.ui.selClip ? "clip" : store.trackPanel() }) || this.renderHeaders() || this.surf.draw(),
         doubleTap: async () => { const n = await prompt("Track name", t.name); if (n) store.update((p) => { tr(p, t).name = n; }, "tracks"); },
         longPress: (pos, e) => this.trackMenu(t, { x: e.clientX, y: e.clientY }),
       });
@@ -175,7 +175,7 @@ export class ArrangeView {
         if (r.lane) { this.laneTap(r, pos); return; }
         const pl = this.placementAt(r, pos.x);
         this.selPl = pl ? pl.id : null;
-        store.select({ selTrack: r.track.id, selClip: pl ? pl.clipId : null, panel: pl ? store.ui.panel === "keys" ? "keys" : "clip" : "device" });
+        store.select({ selTrack: r.track.id, selClip: pl ? pl.clipId : null, panel: pl ? store.ui.panel === "keys" ? "keys" : "clip" : store.trackPanel() });
         this.renderHeaders();
         this.surf.draw();
       },

@@ -5,6 +5,7 @@ import { gestures, Surface } from "./gestures.js";
 import { knob, numberDrag, toggle } from "./controls.js";
 import { guessBpm } from "../model.js";
 import { shade } from "./arrange.js";
+import { loopButton } from "./audition.js";
 
 export class AudioClipEditor {
   constructor(app, track, clip) {
@@ -35,7 +36,8 @@ export class AudioClipEditor {
     const btn = (label, fn, title) => h("button", { type: "button", class: "btn small", title, onclick: fn }, label);
     const gain = knob({ label: "Gain", value: (c.gain ?? 1) / 2, def: 0.5, small: true, size: 34, format: (v) => (v <= 0 ? "-∞" : (20 * Math.log10(v * 2)).toFixed(1) + " dB"),
       onInput: (v) => set((x) => { x.gain = v * 2; }, true), onChange: (v) => set((x) => { x.gain = v * 2; }) });
-    this.toolbar.append(
+    this.loopBtn = loopButton(this.app, this.trackId, () => this.clip);
+    this.toolbar.append(this.loopBtn,
       toggle("Warp", c.warp, () => { set((x) => { x.warp = !x.warp; }); this.renderToolbar(); this.surf.draw(); }, "small"),
       bpm,
       btn("÷2", () => { set((x) => { x.bpm = Math.max(30, x.bpm / 2); }); this.renderToolbar(); this.surf.draw(); }, "Half the sample's tempo"),
@@ -49,6 +51,7 @@ export class AudioClipEditor {
   }
 
   update() { this.surf.draw(); }
+  frame() { if (this.loopBtn) this.loopBtn.sync(); }
 
   setupGestures() {
     let drag = null;

@@ -75,6 +75,13 @@ canvas { display: block; }
 .view { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .splitter { height: 14px; flex: none; display: grid; place-items: center; background: var(--bg); cursor: row-resize; touch-action: none; border-top: 1px solid var(--line); }
 .splitter span { width: 48px; height: 4px; border-radius: 2px; background: var(--line2); }
+/* a finger needs more to grab than a mouse: the bar is taller, and takes touches a little above itself too */
+@media (pointer: coarse) {
+  .splitter { height: 22px; position: relative; }
+  .splitter::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+  .splitter span { width: 72px; height: 5px; }
+}
+.panel-size { margin-left: auto; white-space: nowrap; }
 .panel { height: var(--panel-h); flex: none; display: flex; flex-direction: column; background: var(--bg2); min-height: 110px; }
 
 /* ---- top bar ---- */
@@ -220,6 +227,7 @@ canvas { display: block; }
 .panel-body { flex: 1; min-height: 0; position: relative; overflow: hidden; display: flex; }
 .panel-body > * { flex: 1; min-width: 0; }
 .panel-empty { color: var(--dim); padding: 20px; margin: 0; }
+.panel-empty p { margin: 0 0 12px; }
 .panel-tabs .seg-btn { min-height: 32px; padding: 3px 14px; }
 
 /* device */
@@ -296,8 +304,27 @@ canvas { display: block; }
 .keys-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .keys-oct { min-width: 30px; text-align: center; font-weight: 700; }
 .keys-info { color: var(--dim); margin-left: 8px; }
-.kb { position: relative; flex: 1; min-height: 80px; touch-action: none; }
+.keys-group { display: inline-flex; align-items: center; gap: 6px; }
+.keys-bar .dropdown { max-width: 170px; }
+.piano { position: relative; flex: 1; min-height: 80px; touch-action: none; user-select: none; -webkit-user-select: none; }
 .kb-key { position: absolute; top: 0; border-radius: 0 0 7px 7px; }
+.kb-dot { position: absolute; left: 50%; bottom: 24px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #0003; pointer-events: none; }
+.kb-key.black .kb-dot { bottom: 8px; background: #fff3; }
+.kb-dot.root { background: var(--accent); }
+/* pads in the song's key, and its chords */
+.npads, .chords { flex: 1; display: grid; gap: 5px; min-height: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+.npads { grid-template-columns: repeat(8, 1fr); }
+.chords { grid-template-columns: repeat(7, 1fr); grid-template-rows: 1fr 1fr; }
+.npad, .chord { border-radius: 8px; background: #2b2d32; border: 1px solid #ffffff12; min-height: 0; overflow: hidden; }
+.npad { display: flex; align-items: flex-end; padding: 4px 7px; font-size: 11px; color: #fff8; }
+.npad.root { background: color-mix(in srgb, var(--tc) 34%, #2b2d32); color: #fff; font-weight: 700; }
+.chord { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.chord b { font-size: 17px; }
+.chord span { font-size: 10px; color: #fff7; }
+.chord.seventh { background: #25272b; }
+.chord.root { background: color-mix(in srgb, var(--tc) 34%, #2b2d32); }
+.npad.on, .chord.on { background: var(--tc); color: #111; }
+.chord.on span { color: #1118; }
 .kb-key.white { height: 100%; background: linear-gradient(#f0f1f4, #d8dadf); border: 1px solid #0006; z-index: 1; }
 .kb-key.black { height: 60%; background: linear-gradient(#34363c, #1c1d20); border: 1px solid #000; z-index: 2; }
 .kb-key.on.white { background: var(--accent); }
@@ -466,4 +493,15 @@ canvas { display: block; }
   .tb-views .seg-btn { padding: 3px 8px; }
   .arr-corner, .arr-headers { width: 120px; }
   .th-btns .th-btn { width: 24px; }
+}
+
+/* fingers: the small controls a little bigger than a mouse needs (the editors' toolbars still fit an iPad's width) */
+@media (pointer: coarse) {
+  .btn.small, .tog.small { min-height: 34px; min-width: 34px; }
+  .dropdown { min-height: 34px; }
+  .icon-btn.small { min-width: 34px; min-height: 30px; }
+  .th-btn { width: 36px; height: 30px; font-size: 12px; }
+  .st-mute { width: 32px; }
+  .pr-lane { max-width: 140px; }
+  .pr-toolbar { gap: 5px; }
 }

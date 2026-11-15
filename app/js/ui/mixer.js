@@ -45,7 +45,7 @@ export class MixerView {
       this.meters.push([fd.meter, () => app.engine.trackPeak(t.id)]);
       const sel = store.ui.selTrack === t.id;
       const strip = h("div", { class: "strip" + (sel ? " sel" : ""), style: { "--tc": t.color } },
-        h("button", { type: "button", class: "strip-name", onclick: () => { store.select({ selTrack: t.id, panel: "device" }); this.render(); } }, t.name),
+        h("button", { type: "button", class: "strip-name", onclick: () => { store.select({ selTrack: t.id, panel: store.trackPanel() }); this.render(); } }, t.name),
         h("div", { class: "strip-kind" }, kind),
         h("div", { class: "strip-row" }, eq("low", "Lo"), eq("mid", "Mid"), eq("high", "Hi")),
         toggle("Comp", m.comp, () => setMixer(t, "comp", !m.comp), "small strip-comp"),

@@ -26,6 +26,7 @@ export function newProject(name = "Untitled") {
   const now = Date.now();
   return {
     v: PROJECT_VERSION, id: uid("p"), name, bpm: 120, sig: 4,
+    key: 0, scale: "major", // the song's key (js/scales.js): the Keys panel's pads and chords, the piano roll's shading
     loop: { on: false, start: 0, end: 16 }, metronome: false, launchQuant: 4,
     scenes: Array.from({ length: SCENES }, () => ({ name: "" })),
     tracks: [], clips: {},

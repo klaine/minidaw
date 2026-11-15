@@ -89,18 +89,19 @@ class App {
       this.views.panel.update();
     });
     this.midi = new MidiInput(this);
+    setInterval(() => this.midi.launchpad.refresh(), 500); // frames stop in a background window; a Launchpad's lights shouldn't
     setupDrop(this);
     this.loop();
     window.addEventListener("keydown", (e) => this.onKey(e));
     window.addEventListener("keyup", (e) => this.onKeyUp(e));
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this.save(); });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.save(); else this.keepAwake(); });
     window.addEventListener("pagehide", () => this.save());
     setInterval(() => { if (this.store.ui.dirty) this.save(); }, 15000);
-    if (ctx.state !== "running") {
-      // iOS may need one more touch
-      const resume = () => { ctx.resume(); if (ctx.state === "running") document.removeEventListener("pointerdown", resume); };
-      document.addEventListener("pointerdown", resume);
-    }
+    // iOS stops the audio when the app is left, a call comes in or Siri speaks ("interrupted"), and may need one more
+    // touch at the start: any touch, and coming back to the app, starts it again
+    const wake = () => { if (ctx.state !== "running") { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } };
+    document.addEventListener("pointerdown", wake, true);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
   }
 
   buildUI() {
@@ -141,8 +142,21 @@ class App {
     el.addEventListener("pointercancel", end);
     el.addEventListener("dblclick", () => {
       const cur = this.views.panel.el.getBoundingClientRect().height;
-      document.documentElement.style.setProperty("--panel-h", (cur > 200 ? 120 : Math.round(innerHeight * 0.42)) + "px");
+      this.setPanelHeight(cur > 200 ? 120 : Math.round(innerHeight * 0.42));
     });
+  }
+  setPanelHeight(px) {
+    document.documentElement.style.setProperty("--panel-h", Math.round(px) + "px");
+    try { localStorage.setItem("minidaw.panelH", String(Math.round(px))); } catch (_) { /* private mode */ }
+  }
+  /** Is the bottom panel tall (most of the screen: room to play or edit)? */
+  get panelTall() { return this.views.panel.el.getBoundingClientRect().height > innerHeight * 0.55; }
+  /** The panel tall, or back to what it was */
+  togglePanelTall() {
+    const cur = this.views.panel.el.getBoundingClientRect().height;
+    if (this.panelTall) this.setPanelHeight(this.panelWas && this.panelWas < innerHeight * 0.55 ? this.panelWas : innerHeight * 0.42);
+    else { this.panelWas = cur; this.setPanelHeight(innerHeight - 190); } // the top bar, the ruler and a track stay in sight
+    this.views.panel.update();
   }
 
   setView(v) {
@@ -150,6 +164,25 @@ class App {
     for (const k of ["arrange", "session", "mixer"]) this.views[k].el.hidden = k !== v;
     this.views[v].update({ reason: "view" });
     this.topbar.update();
+    if (this.views.panel) this.views.panel.update({ reason: "view" });
+  }
+
+  /** A new empty MIDI clip on a track, where the view is: the session's next empty slot, or the arrangement's bar at
+   *  the playhead (the next free bar if a clip is there). It opens in the Clip tab. */
+  newClipHere(track) {
+    const store = this.store, t = store.track(track.id);
+    if (!t || t.type !== "midi") return;
+    if (store.ui.view === "session") {
+      const s = t.slots.findIndex((x) => !x);
+      if (s < 0) { toast("No empty slot on " + t.name + ": long press a scene to insert one"); return; }
+      this.views.session.create(t, s);
+      return;
+    }
+    const sig = store.project.sig || 4;
+    let start = Math.floor((this.transport.position || 0) / sig + 1e-6) * sig;
+    const taken = (b) => t.arrangement.some((pl) => pl.start < b + sig - 1e-6 && pl.start + pl.length > b + 1e-6);
+    while (taken(start)) start += sig;
+    this.views.arrange.newClipAt(t, start);
   }
 
   // ---- changes ----
@@ -165,9 +198,22 @@ class App {
   }
 
   onTransport(what) {
+    this.keepAwake();
+    if (this.midi) this.midi.launchpad.refresh(true); // a hardware grid's lights follow even with the window out of sight
     this.topbar.update();
     if (this.store.ui.view === "session") this.views.session.update({ reason: "transport" });
     if (what === "stop" || what === "seek") this.views.arrange.update({ reason: "transport" });
+  }
+
+  /** While it plays or records the screen stays on (an iPad would dim and lock in the middle of a take) */
+  async keepAwake() {
+    const want = (this.transport.playing || this.recording.active) && document.visibilityState === "visible";
+    try {
+      if (want && !this.wakeLock && navigator.wakeLock) {
+        const lock = this.wakeLock = await navigator.wakeLock.request("screen");
+        lock.addEventListener("release", () => { if (this.wakeLock === lock) this.wakeLock = null; });
+      } else if (!want && this.wakeLock) { const lock = this.wakeLock; this.wakeLock = null; await lock.release(); }
+    } catch (_) { this.wakeLock = null; /* not allowed (low power mode), or no API */ }
   }
 
   /** The frame loop: playhead, meters, session clip progress */
@@ -179,6 +225,7 @@ class App {
         this.views.panel.frame();
         this.topbar.frame();
         this.recording.frame();
+        if (this.midi) this.midi.launchpad.refresh();
       } catch (e) { console.error(e); }
       requestAnimationFrame(frame);
     };
@@ -294,7 +341,13 @@ class App {
     return sel && sel.type === "midi" ? [sel] : [];
   }
   liveNote(on, note, vel = 100, targets = null) {
-    for (const t of targets || this.liveTargets()) {
+    // a note is let go on the tracks it was played on, whatever is armed or selected by then (no hung notes)
+    const held = this.liveHeld || (this.liveHeld = new Map());
+    if (!targets) {
+      if (on) { targets = this.liveTargets(); held.set(note, targets.map((t) => t.id)); }
+      else { const ids = held.get(note); held.delete(note); targets = ids ? ids.map((id) => this.store.track(id)).filter(Boolean) : this.liveTargets(); }
+    }
+    for (const t of targets) {
       const inst = this.engine.instrument(t.id);
       if (!inst) continue;
       if (on) inst.noteOn(note, vel, 0); else inst.noteOff(note, 0);
@@ -307,6 +360,22 @@ class App {
     if (s === 0x90 && bytes[2] > 0) return this.liveNote(true, bytes[1], bytes[2]);
     if (s === 0x80 || s === 0x90) return this.liveNote(false, bytes[1], 0);
     for (const t of this.liveTargets()) { const inst = this.engine.instrument(t.id); if (inst) inst.midi(Array.from(bytes), 0); }
+  }
+
+  /** Play the clip being edited round and round (the editors' Loop clip button), or stop */
+  auditionClip(trackId, clip) {
+    const store = this.store, t = store.track(trackId), tr = this.transport;
+    if (!t || !clip) return;
+    if (this.ctx.state !== "running") this.ctx.resume();
+    if (tr.playing) { this.stop(); return; }
+    const scene = t.slots.indexOf(clip.id);
+    const places = t.arrangement.filter((pl) => pl.clipId === clip.id);
+    const pl = places.find((x) => x.id === this.views.arrange.selPl) || places[0];
+    if (scene >= 0 && (store.ui.view === "session" || !pl)) { tr.toggleClip(t.id, scene); return; }
+    if (!pl) return;
+    const l = store.project.loop;
+    if (!l.on || l.start !== pl.start || l.end !== pl.start + pl.length) store.update((p) => { p.loop = { on: true, start: pl.start, end: pl.start + pl.length }; }, "loop");
+    tr.play(pl.start);
   }
 
   // ---- the transport ----

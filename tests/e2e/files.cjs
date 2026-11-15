@@ -154,4 +154,29 @@ function readZip(buf) {
   return out;
 }
 
-module.exports = { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip };
+/**
+ * A stand-in for MIDI hardware, run in the page before the app (page.addInitScript): Web MIDI as the browser gives it,
+ * with devices a flow plugs in and out. window.__midi.plug(names) / unplug(part of a name): each name is an input and an
+ * output port; from(name, bytes): the device sends; sent(name): what the app sent it; asked: each request's sysex flag.
+ */
+function fakeMidi() {
+  const inputs = new Map(), outputs = new Map(), accesses = [];
+  const port = (name, type) => ({ id: type + ":" + name, name, type, state: "connected", connection: "open", manufacturer: "", onmidimessage: null, sent: [], send(d) { this.sent.push(Array.from(d)); } });
+  const changed = () => { for (const a of accesses) if (a.onstatechange) a.onstatechange({}); };
+  window.__midi = {
+    asked: [],
+    plug(names) { for (const n of names) { inputs.set("in:" + n, port(n, "input")); outputs.set("out:" + n, port(n, "output")); } changed(); },
+    unplug(part) { for (const m of [inputs, outputs]) for (const [k, p] of [...m]) if (p.name.includes(part)) { p.state = "disconnected"; m.delete(k); } changed(); },
+    from(name, bytes) { const p = inputs.get("in:" + name); if (!p) throw new Error("no input " + name); if (p.onmidimessage) p.onmidimessage({ data: Uint8Array.from(bytes) }); },
+    sent(name) { const p = outputs.get("out:" + name); if (!p) throw new Error("no output " + name); return p.sent; },
+  };
+  navigator.requestMIDIAccess = (opts) => {
+    const sysex = !!(opts && opts.sysex);
+    window.__midi.asked.push(sysex);
+    const a = { sysexEnabled: sysex, inputs, outputs, onstatechange: null };
+    accesses.push(a);
+    return Promise.resolve(a);
+  };
+}
+
+module.exports = { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip, fakeMidi };

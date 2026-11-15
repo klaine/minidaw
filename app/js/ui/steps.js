@@ -4,6 +4,7 @@
 import { h, clamp } from "../util.js";
 import { menu, segmented, select, knob, toggle } from "./controls.js";
 import { DRUM_BASE_NOTE } from "../model.js";
+import { loopButton } from "./audition.js";
 import { clipPlayhead } from "./pianoroll.js";
 
 const STEPS = 16;
@@ -52,7 +53,8 @@ export class StepSequencer {
     const swing = knob({ label: "Swing", value: clip.swing || 0, def: 0, small: true, size: 30, format: (v) => Math.round(v * 100) + "%",
       onInput: (v) => store.live(() => { this.clip.swing = Math.round(v * 100) / 100; }, "notes"),
       onChange: (v) => store.update(() => { this.clip.swing = Math.round(v * 100) / 100; }, "notes") });
-    this.toolbar.append(view, res,
+    this.loopBtn = loopButton(this.app, this.trackId, () => this.clip);
+    this.toolbar.append(this.loopBtn, view, res,
       h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(this.clip.length - 4), "A bar shorter"),
         h("span", { class: "pr-len" }, bars(clip.length)), btn("+", () => setLen(this.clip.length + 4), "A bar longer")),
       btn("×2", () => this.double(), "Double the clip, its steps repeated"),
@@ -229,6 +231,7 @@ export class StepSequencer {
   }
 
   frame() {
+    if (this.loopBtn) this.loopBtn.sync();
     const ph = clipPlayhead(this.app, this.trackId, this.clip);
     let step = -1;
     if (ph !== null) {

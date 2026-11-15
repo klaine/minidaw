@@ -113,11 +113,50 @@ Everything is touch first.
   mouse).
 - **Moving around.** One finger on empty space pans the timeline. Two fingers pan, and a pinch zooms.
 - **Controls.** Knobs and faders turn with a vertical drag, and a double tap resets them.
-- **Keys tab.** It plays the armed track, or the selected one, from a multi-touch keyboard where velocity comes from
-  how low you touch the key. A Drum Rack track gets 16 pads instead.
+- **Keys tab.** It plays the armed track, or the selected one, and stays open when you pick another track. Where you
+  touch a key or pad sets how hard it plays (lower is louder), and sliding glides. A synth has three surfaces:
+  - **Piano.** A multi-touch keyboard of one to three octaves, with the song's scale marked on the keys.
+  - **Pads.** A grid that holds only the notes of the song's key, so there are no wrong notes. Rows are a fourth
+    apart, so a chord has the same hand shape everywhere, and the key's root is coloured. The grid grows rows with
+    the panel.
+  - **Chords.** One pad plays one chord of the key: triads on the bottom row, sevenths above.
+  - A Drum Rack track gets its 16 pads instead.
+- **Key and scale.** They belong to the song (set them on the Keys tab: 11 scales). The piano roll shades its rows by
+  the scale too.
+- **Making and hearing a clip.** The Clip tab has a **New clip** button when no clip is selected (the arrangement's
+  bar at the playhead, or the session's next empty slot). Every clip editor has **Loop clip**, which plays the clip
+  round and round while you edit it.
+- **Room to work.** **Bigger** on the bottom panel puts it over most of the screen, and **Smaller** brings it back.
+  The bar above the panel can also be dragged.
+- **The screen stays on** while the song plays or records. Audio that iPadOS interrupted (a call, Siri, leaving the
+  app) starts again on the next touch.
 
-Safari on iPad has no Web MIDI, so a MIDI keyboard works in Chrome, Edge or Firefox on a computer. Hardware
-keyboards on a computer also play notes: A W S E D F T G Y H U J K, with Z and X for the octave.
+## Keyboards and controllers
+
+A hardware keyboard on a computer plays notes: A W S E D F T G Y H U J K, with Z and X for the octave.
+
+**No browser on an iPad or iPhone can see MIDI devices.** They all run Safari's engine, which has no Web MIDI. So a
+USB-C MIDI keyboard or a Launchpad plugged into an iPad does not reach minidaw, as a web app. On an iPad the touch
+surfaces above are the instrument. MIDI devices work where the browser has Web MIDI: Chrome or Edge on a computer or
+an Android device. The code uses only the standard interface, so it would work on an iPad unchanged if Safari gained
+it, or inside a native wrapper that provides it.
+
+- **Any MIDI keyboard or controller.** It plays the armed tracks, or the selected one. Notes, the sustain pedal,
+  pitch bend and the other controllers go to the instrument, and notes are recorded while Record is on. Plugging in
+  and unplugging is picked up and shown.
+- **Novation Launchpad Pro Mk3.** minidaw puts it in its DAW mode, as Ableton Live does. The browser asks once for
+  permission to control MIDI devices (SysEx).
+  - **Session button:** the 8 × 8 pads are the session's clips, a column per track, lit in the tracks' colours. A pad
+    plays or stops its clip (pulsing green while it plays); an empty pad stops its track; on an armed track an
+    empty pad records there.
+  - **Right column:** launches scenes. **Arrows:** scroll tracks and scenes (with Shift, a page).
+  - **Play, Record:** the transport. **Shift + Record:** Capture.
+  - **Row under the pads:** selects a track. With **Record Arm**, **Mute**, **Solo** or **Stop Clip** lit, it arms,
+    mutes, solos or stops tracks instead. **Shift + Stop Clip** stops every clip.
+  - **Note, Chord and the Launchpad's own sequencer** stay the Launchpad's: their notes play the armed or selected
+    track like any keyboard.
+  - **Not tried on the hardware.** The protocol follows Novation's programmer's reference as the Ardour project's
+    driver implements it; here it is tested against a stand-in device only.
 
 ## Run it
 
@@ -176,7 +215,7 @@ changing anything in `app/`.
 ## Tests
 
 ```sh
-npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips, kits, drums by their sound and the Ableton exports
+npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips, kits, drums by their sound, the Ableton exports, scales and chords, and the Launchpad's protocol
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
 npm run test:e2e       # the user flows (below); CI runs both on every push (.github/workflows/test.yml)
 ```
@@ -187,6 +226,10 @@ browser profile and fails on any page error. The flows cover:
   drop, copy, and a trimmed pad heard shorter); a synth's presets, knobs and keys; an instrument's own editor.
 - **Session, mixing and recording:** playing chosen session clips; session scenes; solo, mute and faders; recording
   with a count-in; a session loop; Capture.
+- **Playing by touch:** pads in the song's key, one-finger chords, key changes with undo, Keys staying open across
+  tracks; a new song from the New clip button to a looping beat, and the bigger panel.
+- **MIDI devices (stand-ins for the hardware):** a keyboard plays the selected track and its notes end where they
+  began; a Launchpad Pro Mk3 is set up, lights the session, launches clips and scenes, arms a track and stops.
 - **Steps and kits:** the step sequencer (accents, ratchets, painting, pages, swing); a kit built from a folder with
   subfolders; a kit from a zip, and from a zip dropped on a track; an automatic kit from samples without names
   (placed by their sound, trimmed and levelled, another on each press); the kit exported for Move and for Live, and

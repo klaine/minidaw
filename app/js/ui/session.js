@@ -40,7 +40,7 @@ export class SessionView {
       const head = h("div", { class: "ses-head" + (store.ui.selTrack === t.id ? " sel" : ""), dataset: { track: t.id }, style: { "--tc": t.color } },
         h("div", { class: "ses-head-name" }, t.name), h("div", { class: "ses-head-kind" }, kind));
       gestures(head, {
-        tap: () => { store.select({ selTrack: t.id, panel: "device" }); this.render(); },
+        tap: () => { store.select({ selTrack: t.id, panel: store.trackPanel() }); this.render(); },
         longPress: (pos, e) => app.views.arrange.trackMenu(t, { x: e.clientX, y: e.clientY }),
       });
       this.grid.append(head);

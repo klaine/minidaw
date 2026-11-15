@@ -119,5 +119,7 @@ export class Store extends Emitter {
     }
     return null;
   }
+  /** The panel tab after a track is picked: Keys stays (you're playing: the next track plays), else its device */
+  trackPanel() { return this.ui.panel === "keys" ? "keys" : "device"; }
   select(patch) { Object.assign(this.ui, patch); this.emit("select", patch); }
 }

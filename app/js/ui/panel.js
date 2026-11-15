@@ -14,7 +14,8 @@ export class Panel {
     this.tabs = segmented([{ value: "device", label: "Device" }, { value: "clip", label: "Clip" }, { value: "keys", label: "Keys" }], app.store.ui.panel, (v) => app.store.select({ panel: v }), "panel-tabs");
     this.title = h("div", { class: "panel-title" });
     this.body = h("div", { class: "panel-body" });
-    this.el = h("section", { class: "panel" }, h("div", { class: "panel-head" }, this.tabs, this.title), this.body);
+    this.size = h("button", { type: "button", class: "btn small panel-size", onclick: () => app.togglePanelTall() });
+    this.el = h("section", { class: "panel" }, h("div", { class: "panel-head" }, this.tabs, this.title, this.size), this.body);
     this.child = null;
     this.key = "";
   }
@@ -28,7 +29,10 @@ export class Panel {
     this.tabs.set(ui.panel);
     const kind = t && t.type === "midi" ? t.instrument.kind : t ? "audio" : "none";
     const drumSteps = kind === "drumrack" && (ui.drumView || "steps") === "steps"; // a Drum Rack's clips open in the step sequencer
-    const key = [ui.panel, t ? t.id : "", ui.panel === "clip" && clip ? clip.id + ":" + clip.type : "", kind, drumSteps].join("|");
+    const key = [ui.panel, t ? t.id : "", ui.panel === "clip" ? (clip ? clip.id + ":" + clip.type : "none:" + ui.view) : "", kind, drumSteps].join("|");
+    const tall = app.views.panel ? app.panelTall : false;
+    this.size.textContent = tall ? "⤡ Smaller" : "⤢ Bigger";
+    this.size.title = tall ? "The panel back to its size" : "The panel over most of the screen: room to play and edit";
     this.title.textContent = t ? t.name + (ui.panel === "clip" && clip ? " · " + clip.name : "") : "";
     this.title.style.setProperty("--tc", t ? t.color : "#888");
     if (key === this.key && this.child) {
@@ -42,7 +46,12 @@ export class Panel {
     if (!t) { this.body.append(h("p", { class: "panel-empty" }, "Add a track with ＋ in the top bar.")); return; }
     if (ui.panel === "device") this.child = new DeviceView(app, t);
     else if (ui.panel === "clip") {
-      if (!clip) this.body.append(h("p", { class: "panel-empty" }, "Select a clip to edit it: tap one in the arrangement or the session, or double tap an empty place to make one."));
+      if (!clip) {
+        const where = ui.view === "session" ? `in ${t.name}'s next empty slot` : `on ${t.name} at the playhead`;
+        this.body.append(h("div", { class: "panel-empty" },
+          h("p", {}, "Select a clip to edit it: tap one in the arrangement or the session, or double tap an empty place to make one."),
+          t.type === "midi" ? h("button", { type: "button", class: "btn primary", onclick: () => app.newClipHere(t) }, "＋ New clip " + where) : null));
+      }
       else if (clip.type === "midi") this.child = drumSteps ? new StepSequencer(app, t, clip) : new PianoRoll(app, t, clip);
       else this.child = new AudioClipEditor(app, t, clip);
     } else this.child = new KeysView(app, t);

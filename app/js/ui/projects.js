@@ -144,11 +144,12 @@ export async function recordOutput(app) {
 }
 
 export function settingsSheet(app) {
-  const midi = app.midi && app.midi.names.length ? app.midi.names.join(", ") : navigator.requestMIDIAccess ? "none connected" : "not in this browser (Safari has no Web MIDI)";
+  const midi = app.midi ? app.midi.status : "not started";
   const ctx = app.ctx;
   const lat = ctx ? Math.round(((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000) : 0;
   sheet("Settings and help", h("div", { class: "help" },
-    h("p", {}, `Audio: ${ctx ? ctx.sampleRate : "-"} Hz, about ${lat} ms output latency. MIDI inputs: ${midi}.`),
+    h("p", {}, `Audio: ${ctx ? ctx.sampleRate : "-"} Hz, about ${lat} ms output latency.`),
+    h("p", {}, `MIDI keyboards and controllers: ${midi}.`),
     h("h3", {}, "Gestures"),
     h("ul", {},
       h("li", {}, "Tap to select, double tap to create or open, long press for the menu (right click with a mouse)."),
@@ -170,8 +171,13 @@ export function settingsSheet(app) {
     h("p", {}, "Export ▾ in the kit builder (or the top bar's Export menu) saves the kit for Ableton Move as a .ablpresetbundle: drop it on Move Manager's Presets tab. For Live it saves a zip with a Drum Rack (.adg) and its samples: keep them together and drag the .adg into Live. Each pad's sample is what it plays here (trim, reverse and decay), with its level, pan, pitch and choke group."),
     h("h3", {}, "MIDI and audio files"),
     h("p", {}, "Drop a MIDI file on an instrument track (its lane, a session slot or its header), or use Import MIDI in the device panel. Dropped elsewhere, or from Add track → Tracks from a MIDI file, it becomes new tracks, one per part. On a Drum Rack, General MIDI drums land on the pads. Audio files dropped on an audio track become clips there. Long press a MIDI clip to save it as a .mid file."),
-    h("h3", {}, "Keys"),
+    h("h3", {}, "Playing"),
+    h("p", {}, "The Keys tab plays the armed tracks, or the selected one, and stays open when you pick another track. Piano: a keyboard with the song's scale marked. Pads: a grid holding only the notes of the song's key (rows a fourth apart, the root coloured). Chords: one pad, one chord of the key. Touch lower on a key or pad to play harder; slide to glide. Key and scale are the song's: set them on the Keys tab."),
+    h("p", {}, "Clip tab: New clip makes one where you are; Loop clip plays the clip round and round while you edit. Bigger puts the panel over most of the screen."),
+    h("h3", {}, "Keyboards and controllers"),
     h("p", {}, "Computer keyboard: A W S E D F T G Y H U J K O L P plays notes, Z / X shifts the octave, Space plays and stops, Tab switches Arrange and Session, ⌘Z undoes."),
+    h("p", {}, "MIDI keyboards and controllers play the armed or selected track where the browser has Web MIDI (Chrome or Edge on a computer or Android). No browser on an iPad or iPhone has it, so USB MIDI devices can't reach minidaw there."),
+    h("p", {}, "Launchpad Pro Mk3: its Session mode shows the session. Pads play and stop clips (an armed track's empty pad records), the right column launches scenes, the arrows scroll, Play and Record are the transport (Shift + Record: Capture). The row under the pads selects tracks; with Record Arm, Mute, Solo or Stop Clip lit it arms, mutes, solos or stops them. Its Note and Chord modes play like a keyboard."),
     h("h3", {}, "Instruments"),
     h("p", {}, "Crest, Amino, Bizar and PRO-8000 V are the instruments' own engines and editors, built from their repositories. Each MIDI track runs its own instance: tap Edit in the device panel for the full editor."),
     h("p", {}, "Crest, Amino and Bizar follow the song's tempo by themselves. PRO-8000 V gets MIDI clock while playing: set its clock source to MIDI in its editor (System) for its arpeggiator and sequencer to follow."),

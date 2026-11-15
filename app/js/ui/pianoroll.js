@@ -6,6 +6,8 @@ import { gestures, Surface } from "./gestures.js";
 import { menu, segmented, select, toast } from "./controls.js";
 import { laneChoices, DRUM_BASE_NOTE } from "../model.js";
 import { metaSync } from "../audio/instruments.js";
+import { loopButton } from "./audition.js";
+import { keyOf, inScale, isRoot } from "../scales.js";
 import { roundRect, shade } from "./arrange.js";
 
 const KEYS_W = 48, RULER_H = 22, GAP = 6;
@@ -83,7 +85,8 @@ export class PianoRoll {
     const meta = this.t && this.t.type === "midi" ? metaSync(this.t.instrument.kind) : null;
     const choices = [{ key: "vel", name: "Velocity" }, ...laneChoices(this.t, meta)];
     const lane = select(choices.map((c) => ({ value: c.key, label: c.name + (clip.env && clip.env[c.key] && clip.env[c.key].length ? " •" : "") })), this.laneKey, (v) => { this.laneKey = v; this.surf.draw(); }, "pr-lane");
-    this.toolbar.append(view, tool, grid,
+    this.loopBtn = loopButton(this.app, this.trackId, () => this.clip);
+    this.toolbar.append(...[this.loopBtn, view, tool, grid,
       h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(this.clip.length - (this.clip.length > 4 ? 4 : 1)), "Shorter"), len, btn("+", () => setLen(this.clip.length + (this.clip.length >= 4 ? 4 : 1)), "Longer")),
       btn("×2", () => this.duplicateLoop(), "Double the clip, its notes repeated"),
       btn("Quantize", () => this.quantize(), "Snap the selected notes (or all) to the grid"),
@@ -93,7 +96,7 @@ export class PianoRoll {
       this.drums ? btn("Pad sounds ▸", () => this.store.select({ panel: "device" }), "The pads' samples: choose, trim, tune (tap a row's name first to pick its pad)", "primary") : null,
       h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Lane"), lane,
         btn("Clear", () => { if (this.laneKey === "vel") return; this.store.update(() => { delete this.clip.env[this.laneKey]; }, "notes"); this.surf.draw(); }, "Remove this envelope")),
-    );
+    ].filter(Boolean)); // a DOM append() would print a missing one as "null"
   }
 
   update(c = {}) {
@@ -417,11 +420,15 @@ export class PianoRoll {
     c.save();
     c.beginPath(); c.rect(0, gt, w, gb - gt); c.clip();
     const pads = this.drums ? t.instrument.state.pads : null;
+    const key = keyOf(this.store.project), scaled = key.scale.steps.length < 12;
     for (let p = this.top; this.py(p) < gb; p--) {
       if (p < 0) break;
       const y = this.py(p);
       if (this.drums && (p < DRUM_BASE_NOTE || p > DRUM_BASE_NOTE + 15)) { c.fillStyle = "#18191c"; c.fillRect(KEYS_W, y, w, this.rowH); continue; }
-      c.fillStyle = !this.drums && isBlack(p) ? "#222328" : "#2a2b31";
+      // a synth's rows are shaded by the song's scale (its notes lighter, the root's rows marked); chromatic: by the keys
+      if (this.drums) c.fillStyle = "#2a2b31";
+      else if (!scaled) c.fillStyle = isBlack(p) ? "#222328" : "#2a2b31";
+      else c.fillStyle = isRoot(p, key.root) ? "#34353f" : inScale(p, key.root, key.scale.steps) ? "#2a2b31" : "#1f2024";
       c.fillRect(KEYS_W, y, w - KEYS_W, this.rowH);
       c.fillStyle = p % 12 === 0 && !this.drums ? "#3c3e45" : "#1c1d21";
       c.fillRect(KEYS_W, y + this.rowH - 1, w - KEYS_W, 1);
@@ -545,7 +552,7 @@ export class PianoRoll {
     c.restore();
   }
 
-  frame() { if (this.app.transport.playing) this.surf.draw(); }
+  frame() { if (this.loopBtn) this.loopBtn.sync(); if (this.app.transport.playing) this.surf.draw(); }
   dispose() { this.surf.dispose(); }
 }
 

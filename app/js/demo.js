@@ -23,6 +23,7 @@ function place(t, clip, start, length) {
 export function demoProject() {
   const p = newProject("Demo Song");
   p.bpm = 122;
+  p.key = 9; p.scale = "minor"; // A minor: the Keys panel's pads and chords fit the song
   p.loop = { on: false, start: 0, end: 16 };
 
   const drums = newTrack(p, "midi", "drumrack");

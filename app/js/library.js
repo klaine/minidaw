@@ -187,10 +187,16 @@ export class Library {
     return result;
   }
 
-  /** Out of the library (the samples themselves stay: projects may use them) */
+  /** Out of the library. Their bytes go too if nothing else uses them: js/storage.js sweepSamples, by the caller */
   async removeFolder(folder) {
     folder = clean(folder);
     this.items = this.items.filter((it) => !(it.folder === folder || it.folder.startsWith(folder + "/")));
+    await this.save();
+    this.emit();
+  }
+  /** One sample out of the library */
+  async removeItem(id) {
+    this.items = this.items.filter((it) => it.id !== id);
     await this.save();
     this.emit();
   }

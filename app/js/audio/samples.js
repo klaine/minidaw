@@ -108,6 +108,12 @@ export class SampleBank {
   buffer(id) { return this.buffers.get(id) || null; }
   name(id) { return (this.info.get(id) || {}).name || "Sample"; }
 
+  /** A sample whose bytes were deleted: nothing of it is kept here either */
+  forget(id) {
+    this.buffers.delete(id); this.info.delete(id); this.failed.delete(id); this.loading.delete(id);
+    for (const k of this.peaksCache.keys()) if (k.startsWith(id + ":")) this.peaksCache.delete(k);
+  }
+
   /** The decoded buffer, loading it first if needed (null if it can't be had) */
   async load(id, ctx) {
     if (!id) return null;

@@ -878,6 +878,95 @@ const FLOWS = {
     assert.ok((await u.page.locator(".toast", { hasText: "Not saved" }).first().textContent()).includes("Save current as file"), "and says how to keep the work");
   },
 
+  async "storage: samples removed from the library are deleted once nothing uses them"(u) {
+    await u.boot();
+    const stored = () => u.state(() => new Promise((res, rej) => { const r = indexedDB.open("minidaw"); r.onerror = () => rej(r.error); r.onsuccess = () => { const g = r.result.transaction("samples").objectStore("samples").getAll(); g.onsuccess = () => { res(g.result.map((x) => x.name).sort()); r.result.close(); }; }; }));
+    await u.header("Drums").locator(".th-name").tap();
+    await u.tab("Device");
+    await u.tap("Kit builder…");
+    const lib = u.page.locator(".kb .lib");
+    await lib.waitFor();
+    await u.tap("Import ▾");
+    await u.chooseFile(() => u.menuItem("A folder (with its subfolders)"), writeKitFolder(OUT, "Studio Kit"));
+    await u.page.locator(".toast", { hasText: "8 samples added" }).waitFor({ timeout: 10000 });
+    assert.strictEqual((await stored()).length, 8, "the folder's 8 samples are stored");
+    // two of them onto pads by hand: the kit uses those
+    for (const [folder, sample, pad] of [["Kicks", "Kick 01", 1], ["Snares", "Snare Tight", 2]]) {
+      await lib.locator(".lib-crumb", { hasText: /^Studio Kit$/ }).tap();
+      await lib.getByRole("button", { name: "Folder " + folder, exact: true }).tap();
+      await lib.getByRole("button", { name: sample, exact: true }).tap();
+      await u.page.getByRole("button", { name: new RegExp("^Kit pad " + pad + ":") }).tap();
+      await u.until((n) => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads.some((p) => p.name === n), "the pad to take " + sample, 8000, sample);
+    }
+    // one sample out of the library by itself: nothing uses it, so it's deleted
+    await lib.locator(".lib-crumb", { hasText: /^Studio Kit$/ }).tap();
+    await lib.getByRole("button", { name: "Folder Perc", exact: true }).tap();
+    await lib.getByRole("button", { name: "More for Conga", exact: true }).tap();
+    await u.menuItem("Remove from the library");
+    await u.sheetButton("Remove");
+    await u.page.locator(".toast", { hasText: "1 sample deleted from storage" }).waitFor({ timeout: 8000 });
+    assert.ok(!(await stored()).includes("Conga") && (await stored()).length === 7, "the conga is gone from storage");
+    // the whole folder out of the library: the two on the pads stay (the project uses them), the other five go
+    await lib.locator(".lib-crumb", { hasText: /^Library$/ }).tap();
+    await lib.getByRole("button", { name: "More for Studio Kit", exact: true }).tap();
+    await u.menuItem("Remove from the library");
+    await u.sheetButton("Remove");
+    await u.page.locator(".toast", { hasText: "5 samples deleted from storage (2 kept" }).waitFor({ timeout: 8000 });
+    assert.deepStrictEqual(await stored(), ["Kick 01", "Snare Tight"], "what the kit uses is kept");
+    await u.button("Kit pad 1: Kick 01").tap();
+    assert.ok(db(await u.level("Drums", 600)) > -35, "and still plays");
+    // back to the default kit: nothing uses the two now, but Undo could bring the kit back, so they stay for now
+    await u.tap("Default kit");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick", "the default kit", 8000);
+    await u.sheetButton("Done");
+    await u.tap("Projects and settings");
+    await u.menuItem("Settings and help");
+    await u.page.locator(".help-storage", { hasText: /Storage: .*used/ }).waitFor();
+    await u.tap("Free up storage");
+    await u.page.locator(".toast", { hasText: "Nothing to free" }).waitFor({ timeout: 8000 });
+    assert.strictEqual((await stored()).length, 2, "kept while Undo can bring them back");
+    await u.page.locator(".sheet .icon-btn[aria-label=Close]").last().tap();
+    await u.tap("Undo");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick 01", "undo to bring the kit back", 8000);
+    await u.tap("Redo");
+    // a fresh start (no Undo history): now they can go
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick", "redo");
+    await u.page.waitForTimeout(3200); // the autosave
+    await u.page.reload();
+    await u.boot();
+    await u.tap("Projects and settings");
+    await u.menuItem("Settings and help");
+    await u.tap("Free up storage");
+    await u.page.locator(".toast", { hasText: "2 samples nothing uses deleted" }).waitFor({ timeout: 8000 });
+    assert.strictEqual((await stored()).length, 0, "nothing uses them any more: deleted");
+  },
+
+  async "a deleted clip leaves the saved project, and Undo still brings it back"(u) {
+    await u.boot();
+    await u.tap("Projects and settings");
+    await u.menuItem("New project");
+    await u.until(() => window.minidaw.store.project.tracks.length === 3 && !Object.keys(window.minidaw.store.project.clips).length, "the new project");
+    await u.tab("Clip");
+    await u.page.getByRole("button", { name: /New clip on Drums at the playhead/ }).tap();
+    await u.step("Kick", 1).tap();
+    const saved = () => u.state(() => new Promise((res, rej) => { const id = window.minidaw.store.project.id, r = indexedDB.open("minidaw"); r.onerror = () => rej(r.error); r.onsuccess = () => { const g = r.result.transaction("projects").objectStore("projects").get(id); g.onsuccess = () => { res(g.result ? { clips: Object.keys(g.result.clips).length, placed: g.result.tracks[0].arrangement.length } : null); r.result.close(); }; }; }));
+    const saveNow = async () => { await u.tap("Projects and settings"); await u.menuItem("Save now"); await u.page.locator(".toast", { hasText: /^Saved$/ }).last().waitFor(); await u.page.waitForTimeout(150); };
+    await saveNow();
+    assert.deepStrictEqual(await saved(), { clips: 1, placed: 1 }, "saved with its clip");
+    const at = await u.lanePoint("Drums", 1);
+    await u.longPressAt(at.x, at.y);
+    await u.menuItem("Delete");
+    await u.until(() => window.minidaw.store.project.tracks[0].arrangement.length === 0, "the clip to go");
+    await saveNow();
+    assert.deepStrictEqual(await saved(), { clips: 0, placed: 0 }, "deleted: the saved project no longer carries the clip");
+    await u.tap("Undo");
+    await u.until(() => window.minidaw.store.project.tracks[0].arrangement.length === 1, "undo to bring it back");
+    const back = await u.state(() => { const p = window.minidaw.store.project; const c = p.clips[p.tracks[0].arrangement[0].clipId]; return c ? c.notes.length : -1; });
+    assert.strictEqual(back, 1, "with its note");
+    await u.tap("Play (space)");
+    assert.ok(db(await u.level("Drums", 1200)) > -35, "and it plays");
+  },
+
   async "session: launch a scene, stop a track, back to the arrangement"(u) {
     await u.boot();
     await u.tab("Session");

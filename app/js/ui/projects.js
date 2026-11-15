@@ -7,6 +7,7 @@ import { migrate } from "../model.js";
 import { exportAudio } from "../audio/export.js";
 import { Capture } from "../audio/recorder.js";
 import { encodeWav } from "../audio/wav.js";
+import { sweepSamples, storageUse, megabytes } from "../storage.js";
 
 const b64 = {
   enc(buf) { const u8 = new Uint8Array(buf); let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); },
@@ -51,6 +52,9 @@ export async function openProjects(app) {
         h("button", { type: "button", class: "btn small danger", disabled: cur, onclick: async () => {
           if (!(await confirmBox("Delete project", `Delete “${it.name}”? This can't be undone.`, "Delete", true))) return;
           await db.deleteProject(it.id);
+          // its samples, if nothing else uses them, go with it
+          const gone = await sweepSamples(app).catch((e) => { console.error(e); return 0; });
+          if (gone) toast(`Deleted, with ${gone} sample${gone === 1 ? "" : "s"} nothing else uses`);
           fill();
         } }, "Delete")));
     }
@@ -154,6 +158,22 @@ export async function recordOutput(app) {
   toast("Recording the output: play, then choose Stop recording in the Export menu");
 }
 
+/** How much of the browser's storage is used, and a button that deletes the samples nothing uses any more */
+function storageLine(app) {
+  const text = h("span", {}, "Storage: …");
+  const show = async () => { const u = await storageUse(); text.textContent = u ? `Storage: ${megabytes(u.used)} used` + (u.quota ? ` of ${megabytes(u.quota)} the browser allows` : "") + "." : "Storage: this browser doesn't say how much is used."; };
+  show();
+  const btn = h("button", { type: "button", class: "btn small", title: "Delete the samples no library folder, kit or project uses any more", onclick: async () => {
+    btn.disabled = true;
+    await app.save();
+    const gone = await sweepSamples(app).catch((e) => { console.error(e); return -1; });
+    toast(gone < 0 ? "Couldn't look through the storage" : gone ? `${gone} sample${gone === 1 ? "" : "s"} nothing uses deleted` : "Nothing to free: every stored sample is in use");
+    btn.disabled = false;
+    setTimeout(show, 400);
+  } }, "Free up storage");
+  return h("p", { class: "help-storage" }, text, " ", btn);
+}
+
 export function settingsSheet(app) {
   const midi = app.midi ? app.midi.status : "not started";
   const ctx = app.ctx;
@@ -161,6 +181,7 @@ export function settingsSheet(app) {
   sheet("Settings and help", h("div", { class: "help" },
     h("p", {}, `Audio: ${ctx ? ctx.sampleRate : "-"} Hz, about ${lat} ms output latency.`),
     h("p", {}, `MIDI keyboards and controllers: ${midi}.`),
+    storageLine(app),
     h("h3", {}, "Gestures"),
     h("ul", {},
       h("li", {}, "Tap to select, double tap to create or open, long press for the menu (right click with a mouse)."),
@@ -192,5 +213,5 @@ export function settingsSheet(app) {
     h("h3", {}, "Instruments"),
     h("p", {}, "Crest, Amino, Bizar and PRO-8000 V are the instruments' own engines and editors, built from their repositories. Each MIDI track runs its own instance: tap Edit in the device panel for the full editor."),
     h("p", {}, "Crest, Amino and Bizar follow the song's tempo by themselves. PRO-8000 V gets MIDI clock while playing: set its clock source to MIDI in its editor (System) for its arpeggiator and sequencer to follow."),
-    h("p", { class: "dim" }, "Projects and samples are kept in this browser's storage. Save a project as a file to move it to another device.")), { wide: true });
+    h("p", { class: "dim" }, "Projects and samples are kept in this browser's storage. Save a project as a file to move it to another device. A sample removed from the library (⋯ beside it or its folder) is deleted once no kit or project uses it; Free up storage above does the same for anything left over.")), { wide: true });
 }

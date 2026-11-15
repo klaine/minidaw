@@ -105,8 +105,13 @@ bridged to the track it plays on.
   - **Saving.** Edits are saved a few seconds after they're made, and at once when the app is left or reloaded.
     If a save fails (storage full, or the same project saved from another tab since), a "Not saved" notice says so
     and repeats while it lasts. An untouched tab never writes over newer work.
-  - **Not done yet.** Samples removed from the library stay in the browser's storage, and undo keeps full copies
-    of the project (up to 120), which is heavy for very large projects.
+  - **Storage.** A sample removed from the library (a folder's ⋯ menu, or a sample's) is deleted from the
+    browser's storage unless something still uses it: another library folder, a saved kit, a saved project, or
+    the open project including what Undo could bring back. Deleting a project frees its samples the same way.
+    Settings shows how much storage is used and has **Free up storage**, which deletes what nothing uses.
+    Deleted clips leave the project when it is saved.
+  - **Undo.** Up to 120 steps. A step keeps only the clips and tracks that changed, so a large song's undo
+    history costs what was edited, not 120 copies of the song.
 - **Updates.** A new version installs in the background and starts the next time the app is opened, never in the
   middle of a session.
 - **Offline.** It is a PWA: once loaded it works without a network, and on iPad you add it with
@@ -114,7 +119,9 @@ bridged to the track it plays on.
 
 ## On the iPad
 
-Everything is touch first.
+Everything is touch first. It is written for Safari 16.4 or later (iPadOS 16.4, 2023): zip import, the Ableton
+Live export and the screen staying on need that version. It has not been run on a real iPad from this repository's
+tests, which use Chromium at iPad sizes with touch events.
 
 - **Basic gestures.** Tap selects, double tap creates or opens, and long press opens a menu (right click with a
   mouse).
@@ -222,7 +229,7 @@ changing anything in `app/`.
 ## Tests
 
 ```sh
-npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips, kits, drums by their sound, the Ableton exports, scales and chords, and the Launchpad's protocol
+npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo (steps that share what didn't change), zips, kits, which stored samples are in use, drums by their sound, the Ableton exports, scales and chords, and the Launchpad's protocol
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
 npm run test:e2e       # the user flows (below); CI runs both on every push (.github/workflows/test.yml)
 ```
@@ -248,6 +255,8 @@ browser profile and fails on any page error. The flows cover:
   layout; starting offline.
 - **Keeping work:** an edit made just before a reload is saved; a write the browser refuses (a full disk, simulated)
   is said, and "Saved" is not; a duplicated track's clips are its own.
+- **Storage:** samples removed from the library are deleted only once no kit, project or Undo step uses them; a
+  deleted clip leaves the saved project and Undo still brings it back.
 
 They act only through the interface: taps, drags, long presses, keys, the file chooser, downloads and file drops.
 They check what a person would notice: sound at the app's meters, the screen, what survives a reload, and exported

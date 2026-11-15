@@ -437,6 +437,8 @@ canvas { display: block; }
 .lib-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-path, .lib-count { font-size: 11px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-play { min-width: 40px; min-height: 40px; }
+.lib-more { flex: none; min-width: 36px; min-height: 36px; }
+.help-storage .btn { margin-left: 6px; }
 .lib-empty { margin: 8px 4px; }
 .kb { display: flex; gap: 16px; min-height: 0; height: 100%; }
 .kb-lib { flex: 1.2; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
@@ -519,4 +521,14 @@ canvas { display: block; }
   .pr-lane { max-width: 140px; }
   .pr-toolbar { gap: 5px; }
   .strip-btns .tog { min-width: 30px; min-height: 36px; padding: 3px 4px; }
+}
+
+/* Safari before 16.2 has no color-mix(): plain colours instead, so clips, steps and pads still show there */
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .lh { border-left: 5px solid var(--tc); }
+  .ses-slot.clip { background: var(--cc); }
+  .ses-slot.recording { background: var(--rec) !important; }
+  .pad { background: #2b2d32; }
+  .st-cell.on { background: var(--tc, #ff6b5b); }
+  .npad.root, .chord.root { background: #3d3f47; }
 }

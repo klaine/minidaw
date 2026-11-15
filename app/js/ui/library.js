@@ -4,6 +4,7 @@
 import { h } from "../util.js";
 import { menu, toast, confirmBox } from "./controls.js";
 import { BUILTIN_ROOT } from "../library.js";
+import { sweepSamples } from "../storage.js";
 
 export class LibraryBrowser {
   /** o: { onPick(item), selectable (keep the picked one highlighted), folder (to open first), dragData } */
@@ -76,7 +77,8 @@ export class LibraryBrowser {
       h("button", { type: "button", class: "icon-btn lib-play", "aria-label": "Hear " + it.name, onclick: (e) => { e.stopPropagation(); this.preview(it); } }, "▶"),
       h("button", { type: "button", class: "lib-sample-btn", "aria-label": it.name, onclick: pick },
         h("span", { class: "lib-name" }, it.name),
-        showFolder ? h("span", { class: "dim lib-path" }, it.folder) : it.bpm ? h("span", { class: "dim lib-path" }, it.bpm + " BPM") : null));
+        showFolder ? h("span", { class: "dim lib-path" }, it.folder) : it.bpm ? h("span", { class: "dim lib-path" }, it.bpm + " BPM") : null),
+      it.builtin ? null : h("button", { type: "button", class: "icon-btn small lib-more", "aria-label": "More for " + it.name, onclick: (e) => { e.stopPropagation(); this.sampleMenu(it, e.currentTarget); } }, "⋯"));
     el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/x-minidaw-sample", it.id); e.dataTransfer.effectAllowed = "copy"; });
     return el;
   }
@@ -145,8 +147,24 @@ export class LibraryBrowser {
     items.push("-", { label: "Remove from the library", danger: true, onClick: async () => {
       if (!(await confirmBox("Remove " + f.name, `Remove “${f.name}” and its ${f.count} sample${f.count === 1 ? "" : "s"} from the library? Projects using them keep them.`, "Remove", true))) return;
       await this.lib.removeFolder(f.path);
+      await this.freed(f.count);
     } });
     menu(anchor, items, { title: f.path });
+  }
+
+  /** After `count` samples left the library: the ones nothing else uses are deleted from the browser's storage */
+  async freed(count) {
+    const gone = await sweepSamples(this.app).catch((e) => { console.error(e); return 0; });
+    const kept = Math.max(0, count - gone);
+    toast(`Removed from the library${gone ? `: ${gone} sample${gone === 1 ? "" : "s"} deleted from storage` : ""}${kept ? ` (${kept} kept: a project or a kit uses ${kept === 1 ? "it" : "them"})` : ""}`, 5000);
+  }
+  sampleMenu(it, anchor) {
+    menu(anchor, [{ label: "Remove from the library", danger: true, onClick: async () => {
+      if (!(await confirmBox("Remove " + it.name, `Remove “${it.name}” from the library? A project or kit that uses it keeps it; otherwise it is deleted.`, "Remove", true))) return;
+      if (this.selected && this.selected.id === it.id) this.selected = null;
+      await this.lib.removeItem(it.id);
+      await this.freed(1);
+    } }], { title: it.name });
   }
 
   dispose() { this.off(); this.stopPreview(); }

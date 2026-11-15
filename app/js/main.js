@@ -304,6 +304,7 @@ class App {
         const states = await this.engine.collectStates();
         const p = this.store.project;
         for (const t of p.tracks) if (states.has(t.id) && t.instrument) t.instrument.state = states.get(t.id);
+        this.pruneClips(p);
         const copy = deepCopy(p);
         await db.saveProject(copy, { since: this.loadedAt.get(p.id) });
         this.loadedAt.set(p.id, copy.updatedAt);
@@ -330,6 +331,21 @@ class App {
     if (this.saveAgain) { this.saveAgain = false; return this.save(); }
     return ok;
   }
+  /**
+   * Clips no slot or placement shows any more (deleted ones) leave the project when it's saved: they stayed in it, in
+   * every save and exported file, for good. Undo still has them: its steps keep their own clips.
+   */
+  pruneClips(p) {
+    if (this.store.locked || this.store.pending) return; // a recording or a drag is in the middle of something
+    const used = new Set();
+    for (const t of p.tracks) { for (const id of t.slots) if (id) used.add(id); for (const pl of t.arrangement) used.add(pl.clipId); }
+    const copied = this.views.arrange && this.views.arrange.clipboard, copiedSlot = this.views.session && this.views.session.clipboard;
+    if (copied && copied.clipId) used.add(copied.clipId); // a copied clip can still be pasted
+    if (copiedSlot) used.add(copiedSlot);
+    if (this.store.ui.selClip) used.add(this.store.ui.selClip);
+    for (const id of Object.keys(p.clips)) if (!used.has(id)) delete p.clips[id];
+  }
+
   /** The page is going away or out of sight: the project as it is, written at once (the full save, which asks the
    *  instruments for their sound first, may not get the time), then the full save */
   saveLeaving() {

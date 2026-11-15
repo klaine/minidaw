@@ -80,5 +80,23 @@ console.log("building a kit");
   check(placed.length === 12 && new Set(placed).size === 12, "every sample on one pad (" + placed.length + ")");
 }
 
+console.log("which stored samples are still used");
+{
+  const { projectSamples, usedSamples } = await import("../app/js/storage.js");
+  const drum = (ids) => ({ id: "t", type: "midi", instrument: { kind: "drumrack", state: { pads: ids.map((sample) => ({ sample })) } }, slots: [], arrangement: [] });
+  const proj = (clips, pads = []) => ({ clips: Object.fromEntries(clips.map((id, i) => ["c" + i, { type: "audio", sampleId: id }])), tracks: [drum(pads), { id: "s", type: "midi", instrument: { kind: "crest", state: null } }] });
+  const one = projectSamples(proj(["s1", "builtin:loop-house"], ["s2", "builtin:kick", "s2"]));
+  check([...one].sort().join() === "s1,s2", "a project's samples: its audio clips' and its pads', not the built-in ones: " + [...one].sort());
+  check(projectSamples({ clips: { a: { type: "midi", notes: [] } }, tracks: [] }).size === 0 && projectSamples(null).size === 0, "a project without samples; no project");
+  const used = usedSamples({
+    library: [{ id: "lib1" }, { id: "lib2" }],
+    kits: [{ pads: [{ sample: "kit1" }, { sample: "builtin:snare" }, null] }],
+    projects: [proj(["saved1"]), proj([], ["saved2"])],
+    open: [proj(["open1"]), null, proj(["undo1"]), proj(["redo1"])],
+  });
+  const stored = ["lib1", "lib2", "kit1", "saved1", "saved2", "open1", "undo1", "redo1", "orphan1", "orphan2"];
+  check(stored.filter((id) => !used.has(id)).join() === "orphan1,orphan2", "kept: the library's, a kit's, saved projects', the open project's and what Undo or Redo could bring back; the rest can go");
+}
+
 console.log(failures ? `${failures} FAILED` : "all passed");
 process.exit(failures ? 1 : 0);

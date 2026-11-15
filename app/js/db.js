@@ -79,6 +79,11 @@ export const db = {
   },
   saveSample: (rec) => run("samples", "readwrite", (s) => s.put(rec)),
   loadSample: (id) => run("samples", "readonly", (s) => s.get(id)),
+  deleteSample: (id) => run("samples", "readwrite", (s) => s.delete(id)),
+  /** The ids of every stored sample (without their bytes) */
+  sampleKeys: () => run("samples", "readonly", (s) => s.getAllKeys()),
+  /** Every saved project, whole (to see what they use) */
+  allProjects: () => run("projects", "readonly", (s) => s.getAll()).then((all) => all || []),
   get: (k) => run("misc", "readonly", (s) => s.get(k)),
   set: (k, v) => run("misc", "readwrite", (s) => s.put(v, k)),
 };

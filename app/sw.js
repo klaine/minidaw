@@ -4,7 +4,7 @@
 // (scripts/gen_precache.mjs) installs a new copy beside the old one and waits: a page that is running keeps the files
 // it started with. The page's boot screen (before Start) tells a waiting worker to take over and reloads, so the new
 // version starts whole; then the old copy is removed.
-const VERSION = "c59a10769add";
+const VERSION = "d2d3ffbd8dee";
 const CACHE = "minidaw-" + VERSION;
 const SHELL = ["./", "index.html", "css/app.css", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "precache.json"];
 

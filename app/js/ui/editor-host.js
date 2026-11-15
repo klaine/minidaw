@@ -180,10 +180,12 @@ export class EditorHost {
     const inst = this.app.engine.instrument(id);
     if (inst && b && (b.presetChanged || b.edited || b instanceof SchwungBridge)) {
       const name = await inst.presetName();
-      this.app.store.update((p) => {
-        const t = p.tracks.find((x) => x.id === id);
-        if (t && t.instrument) { t.instrument.presetName = name || t.instrument.presetName; }
-      }, "preset");
+      const t0 = this.app.store.track(id);
+      // the sound's name, if it changed in the editor (not an undo step: the sound is the instrument's)
+      if (t0 && t0.instrument && name && name !== t0.instrument.presetName) {
+        this.app.store.live((p) => { p.tracks.find((x) => x.id === id).instrument.presetName = name; }, "preset");
+        this.app.store.pending = null;
+      }
       this.app.save();
     }
     this.app.views.panel.key = "";

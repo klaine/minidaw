@@ -42,6 +42,7 @@ export class Capture {
     });
   }
   dispose() {
+    try { this.node.port.postMessage({ t: "dispose" }); } catch (_) { /* closed */ } // its processor ends
     try { this.source.disconnect(this.node); } catch (_) { /* gone */ }
     try { this.node.disconnect(); this.sink.disconnect(); } catch (_) { /* gone */ }
   }

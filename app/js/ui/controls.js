@@ -46,7 +46,7 @@ export function knob(o) {
     if (now - lastTap < 300 && o.def !== undefined) { v = o.def; paint(); o.onInput && o.onInput(v); o.onChange && o.onChange(v); lastTap = 0; return; }
     lastTap = now;
     el.setPointerCapture(e.pointerId);
-    start = { x: e.clientX, y: e.clientY, v, fine: e.shiftKey };
+    start = { x: e.clientX, y: e.clientY, v, fine: e.shiftKey, moved: false };
     el.classList.add("active");
     o.onStart && o.onStart();
   });
@@ -55,13 +55,16 @@ export function knob(o) {
     const d = (start.y - e.clientY) + (e.clientX - start.x) * 0.5;
     const range = e.shiftKey ? 600 : 160;
     const nv = clamp(start.v + d / range, 0, 1);
-    if (nv !== v) { v = o.step ? Math.round(nv / o.step) * o.step : nv; paint(); o.onInput && o.onInput(v); }
+    if (nv !== v) { v = o.step ? Math.round(nv / o.step) * o.step : nv; start.moved = true; paint(); o.onInput && o.onInput(v); }
   });
-  const end = () => { if (!start) return; start = null; el.classList.remove("active"); o.onChange && o.onChange(v); };
+  // a touch that turned nothing changes nothing (no undo step; the control isn't rebuilt, so a second tap resets it)
+  const end = () => { if (!start) return; const moved = start.moved; start = null; el.classList.remove("active"); if (moved && o.onChange) o.onChange(v); };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
   el.set = (nv) => { if (start) return; v = clamp(nv, 0, 1); paint(); };
   el.get = () => v;
+  /** Was it turned since it was last pressed (a long press on it is then not a long press)? */
+  el.turning = () => !!(start && start.moved);
   return el;
 }
 
@@ -87,18 +90,20 @@ export function fader(o) {
     if (now - lastTap < 300 && o.def !== undefined) { v = o.def; paint(); o.onInput && o.onInput(v); o.onChange && o.onChange(v); lastTap = 0; return; }
     lastTap = now;
     slot.setPointerCapture(e.pointerId);
-    start = { y: e.clientY, v, hgt: slot.getBoundingClientRect().height };
+    start = { y: e.clientY, v, hgt: slot.getBoundingClientRect().height, moved: false };
     el.classList.add("active");
     o.onStart && o.onStart();
   });
   slot.addEventListener("pointermove", (e) => {
     if (!start) return;
     const scale = e.shiftKey ? 4 : 1;
-    v = clamp(start.v + (start.y - e.clientY) / (start.hgt * scale), 0, 1);
+    const nv = clamp(start.v + (start.y - e.clientY) / (start.hgt * scale), 0, 1);
+    if (nv === v) return;
+    v = nv; start.moved = true;
     paint();
     o.onInput && o.onInput(v);
   });
-  const end = () => { if (!start) return; start = null; el.classList.remove("active"); o.onChange && o.onChange(v); };
+  const end = () => { if (!start) return; const moved = start.moved; start = null; el.classList.remove("active"); if (moved && o.onChange) o.onChange(v); };
   slot.addEventListener("pointerup", end);
   slot.addEventListener("pointercancel", end);
   el.set = (nv) => { if (start) return; v = clamp(nv, 0, 1); paint(); };

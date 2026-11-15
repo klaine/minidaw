@@ -73,6 +73,8 @@ export class ArrangeView {
   }
 
   // ---- headers ----
+  /** The selected track's header highlighted (without rebuilding them) */
+  markHeaders() { for (const row of this.headers.querySelectorAll(".th")) row.classList.toggle("sel", row.dataset.track === this.app.store.ui.selTrack); }
   renderHeaders() {
     const app = this.app, store = app.store;
     this.headers.textContent = "";
@@ -95,7 +97,8 @@ export class ArrangeView {
             btn("A", t.lanes.length > 0, "auto", () => this.addLane(t), "Show an automation lane"))),
         meter);
       gestures(row, {
-        tap: () => store.select({ selTrack: t.id, panel: store.ui.panel === "clip" && store.ui.selClip ? "clip" : store.trackPanel() }) || this.renderHeaders() || this.surf.draw(),
+        // the headers stay as they are (only the highlight moves): a second tap finds the same row, for the double tap
+        tap: () => store.select({ selTrack: t.id, panel: store.ui.panel === "clip" && store.ui.selClip ? "clip" : store.trackPanel() }) || this.markHeaders() || this.surf.draw(),
         doubleTap: async () => { const n = await prompt("Track name", t.name); if (n) store.update((p) => { tr(p, t).name = n; }, "tracks"); },
         longPress: (pos, e) => this.trackMenu(t, { x: e.clientX, y: e.clientY }),
       });
@@ -176,7 +179,7 @@ export class ArrangeView {
         const pl = this.placementAt(r, pos.x);
         this.selPl = pl ? pl.id : null;
         store.select({ selTrack: r.track.id, selClip: pl ? pl.clipId : null, panel: pl ? store.ui.panel === "keys" ? "keys" : "clip" : store.trackPanel() });
-        this.renderHeaders();
+        this.markHeaders();
         this.surf.draw();
       },
       doubleTap: (pos) => {
@@ -254,16 +257,21 @@ export class ArrangeView {
           } else if (drag.kind === "end") {
             pl.length = Math.max(this.snap / 2, this.snapB(o.start + o.length + db) - o.start);
           } else {
-            const ns = clamp(this.snapB(o.start + db), Math.max(0, o.start - (o.offset || 0)), o.start + o.length - this.snap / 2);
+            // never before the song's start or its own material's, and something of the clip stays (zoomed out, the
+            // grid can be coarser than the clip is long)
+            const lo = Math.max(0, o.start - (o.offset || 0));
+            const ns = clamp(this.snapB(o.start + db), lo, Math.max(lo, o.start + o.length - Math.min(this.snap / 2, o.length / 2)));
             pl.offset = Math.max(0, (o.offset || 0) + (ns - o.start));
             pl.length = o.length - (ns - o.start);
             pl.start = ns;
           }
         }, "arrange");
       },
-      dragEnd: () => {
+      dragEnd: (pos, e, cancelled) => {
         if (!drag) return;
         if (drag.kind === "pan") { drag = null; return; }
+        // the system took the touch, or a second finger made it a pinch: the clip goes back where it was
+        if (cancelled) { drag = null; store.cancel(); this.surf.draw(); return; }
         if (drag.kind !== "point") {
           // a moved clip cuts what it lands on
           store.live((p) => {
@@ -441,11 +449,11 @@ export class ArrangeView {
     const inLoop = (y) => y < 15;
     gestures(this.ruler, {
       tap: (pos) => {
+        // on the loop's brace: the loop on or off. Anywhere else the ruler takes the playhead there (the loop moves by
+        // dragging in its strip, or from a lane's menu: a finger aiming at the ruler shouldn't move it by accident)
         if (inLoop(pos.y)) {
           const l = this.p.loop, b = this.xb(pos.x);
-          if (b >= l.start && b <= l.end) store.update((p) => { p.loop.on = !p.loop.on; }, "loop");
-          else { const s = Math.floor(b / 4) * 4; store.update((p) => { p.loop = { on: true, start: s, end: s + 4 }; }, "loop"); }
-          return;
+          if (b >= l.start && b <= l.end) { store.update((p) => { p.loop.on = !p.loop.on; }, "loop"); return; }
         }
         app.transport.seek(Math.max(0, this.snapB(this.xb(pos.x), Math.min(this.snap, 1))));
         this.rulerSurf.draw(); this.surf.draw();
@@ -469,13 +477,14 @@ export class ArrangeView {
         store.live((p) => {
           const l = p.loop;
           if (drag.kind === "lend") l.end = Math.max(l.start + this.snap, b);
-          else if (drag.kind === "lstart") l.start = Math.min(l.end - this.snap, b);
+          else if (drag.kind === "lstart") l.start = Math.max(0, Math.min(l.end - Math.min(this.snap, l.end), b));
           else if (drag.kind === "lmove") { const d = this.snapB(this.xb(pos.x) - drag.b0); const len = drag.e - drag.s; l.start = Math.max(0, drag.s + d); l.end = l.start + len; }
           else { l.start = Math.min(drag.b0, b); l.end = Math.max(drag.b0 + this.snap, b); l.on = true; }
         }, "loop");
       },
-      dragEnd: () => {
-        if (drag.kind === "scrub") { if (drag.b !== undefined) app.transport.seek(drag.b); }
+      dragEnd: (pos, e, cancelled) => {
+        if (drag.kind === "scrub") { if (drag.b !== undefined && !cancelled) app.transport.seek(drag.b); }
+        else if (cancelled) store.cancel();
         else store.commit("loop");
         drag = null;
       },

@@ -23,7 +23,7 @@ export class SessionView {
 
   update(c = {}) {
     if (this.el.hidden) return;
-    if (c.reason === "transport" || c.reason === "session") { this.paintStates(); return; }
+    if (c.reason === "transport") { this.paintStates(); return; } // what plays changed: only the slots' lights
     if (c.live) return;
     this.render();
   }
@@ -53,7 +53,6 @@ export class SessionView {
       const sc = h("div", { class: "ses-scene" }, h("span", { class: "ses-play", html: PLAY }), h("span", { class: "ses-scene-name" }, scene.name || String(s + 1)));
       gestures(sc, {
         tap: () => app.transport.launchScene(s),
-        doubleTap: async () => { const n = await prompt("Scene name", scene.name || ""); if (n !== null) store.update((p) => { p.scenes[s].name = n; }, "session"); },
         longPress: (pos, e) => menu({ x: e.clientX, y: e.clientY }, [
           { label: "Launch", onClick: () => app.transport.launchScene(s) },
           { label: "Rename…", onClick: async () => { const n = await prompt("Scene name", scene.name || ""); if (n !== null) store.update((p) => { p.scenes[s].name = n; }, "session"); } },

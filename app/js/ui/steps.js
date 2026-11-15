@@ -43,7 +43,7 @@ export class StepSequencer {
     const view = segmented([{ value: "steps", label: "Steps" }, { value: "roll", label: "Piano roll" }], "steps", (v) => store.select({ drumView: v }), "pr-tool");
     const res = select(RES.map(([v, l]) => ({ value: v, label: l })), this.res, (v) => { this.res = +v; store.ui.stepRes = this.res; this.page = 0; this.renderToolbar(); this.render(); }, "pr-grid");
     res.title = "Step length";
-    const pages = h("span", { class: "pr-group st-pages" });
+    const pages = this.pagesEl = h("span", { class: "pr-group st-pages" });
     for (let i = 0; i < this.pages; i++) {
       pages.append(h("button", { type: "button", class: "btn small st-page" + (i === this.page ? " on" : ""), "aria-label": "Page " + (i + 1),
         onclick: () => { this.page = i; this.follow = false; this.renderToolbar(); this.render(); } }, String(i + 1)));
@@ -65,6 +65,8 @@ export class StepSequencer {
       btn("Clear", () => store.update(() => { this.clip.notes = []; }, "notes"), "Clear every step"),
       btn("Pad sounds ▸", () => store.select({ panel: "device" }), "The pads' samples: choose, trim, tune", "primary"));
   }
+
+  markPage() { if (this.pagesEl) [...this.pagesEl.children].forEach((b, i) => b.classList.toggle("on", i === this.page)); }
 
   /** The notes of pad row p in step i of this page */
   notesAt(p, i) {
@@ -140,37 +142,52 @@ export class StepSequencer {
     this.paintCells();
   }
 
-  /** Tap a step to toggle it; drag across steps to paint or erase (one undo step); hold for its menu */
+  /**
+   * Tap a step to toggle it; drag along its row to paint or erase (one undo step); hold for its menu. The grid scrolls
+   * up and down under a finger (touch-action: pan-y): a touch's first step is set when the finger lifts, moves along
+   * the row or has rested 90 ms, so a swipe that turns out to be a scroll (the browser cancels the touch) changes
+   * nothing and plays nothing. A mouse sets it at once.
+   */
   setupPaint() {
-    let paint = null, hold = 0;
+    let paint = null, hold = 0, wait = 0;
     const cellAt = (e) => {
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const c = el && el.closest(".st-cell");
       return c && this.grid.contains(c) && !c.disabled ? { r: +c.dataset.r, i: +c.dataset.i, el: c } : null;
     };
+    const apply = () => { // the first step of the gesture
+      clearTimeout(wait);
+      if (!paint || paint.applied) return;
+      paint.applied = true;
+      this.store.begin();
+      this.setStep(paint.r, paint.start.i, paint.on, true);
+    };
     this.grid.addEventListener("pointerdown", (e) => {
       const c = cellAt(e);
-      if (!c) return;
-      e.preventDefault();
-      this.grid.setPointerCapture(e.pointerId);
+      if (!c || paint) return;
+      if (e.pointerType === "mouse") e.preventDefault();
+      try { this.grid.setPointerCapture(e.pointerId); } catch (_) { /* a pointer that's already gone */ }
       const on = this.notesAt(DRUM_BASE_NOTE + c.r, c.i).length === 0;
-      paint = { on, r: c.r, done: new Set([c.r + ":" + c.i]), moved: false, x: e.clientX, y: e.clientY, start: c };
-      this.store.begin();
-      this.setStep(c.r, c.i, on, true);
+      paint = { id: e.pointerId, on, r: c.r, done: new Set([c.r + ":" + c.i]), moved: false, applied: false, x: e.clientX, y: e.clientY, start: c };
+      clearTimeout(wait);
+      if (e.pointerType === "touch") wait = setTimeout(apply, 90); else apply();
       clearTimeout(hold);
       hold = setTimeout(() => {
         if (!paint || paint.moved) return;
-        // a hold: back to how it was, and the step's menu
-        this.store.cancel();
-        const start = paint.start;
+        // a hold: back to how it was, and the step's menu (where the step is now: undoing redraws the grid)
+        const start = paint.start, box = start.el.getBoundingClientRect(), applied = paint.applied;
         paint = null;
+        clearTimeout(wait);
+        if (applied) this.store.cancel();
         this.paintCells();
-        this.stepMenu(start.r, start.i, start.el);
+        this.stepMenu(start.r, start.i, { x: box.left + box.width / 2, y: box.bottom });
       }, 520);
     });
     this.grid.addEventListener("pointermove", (e) => {
-      if (!paint) return;
+      if (!paint || e.pointerId !== paint.id) return;
       if (Math.hypot(e.clientX - paint.x, e.clientY - paint.y) > 8) paint.moved = true;
+      if (!paint.applied && Math.abs(e.clientX - paint.x) > 6) apply(); // along the row: painting
+      if (!paint.applied) return;
       const c = cellAt(e);
       if (!c || c.r !== paint.r) return; // paints along its own row
       const key = c.r + ":" + c.i;
@@ -178,27 +195,35 @@ export class StepSequencer {
       paint.done.add(key);
       this.setStep(c.r, c.i, paint.on, true);
     });
-    const end = () => {
+    this.grid.addEventListener("pointerup", (e) => {
+      if (!paint || e.pointerId !== paint.id) return;
       clearTimeout(hold);
-      if (!paint) return;
+      apply(); // a quick tap
       paint = null;
       this.store.commit("notes");
-    };
-    this.grid.addEventListener("pointerup", end);
-    this.grid.addEventListener("pointercancel", end);
+    });
+    this.grid.addEventListener("pointercancel", (e) => {
+      if (!paint || e.pointerId !== paint.id) return;
+      // the browser took the touch (a scroll): nothing of it stays
+      clearTimeout(hold); clearTimeout(wait);
+      const applied = paint.applied;
+      paint = null;
+      if (applied) { this.store.cancel(); this.paintCells(); }
+    });
     this.grid.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   stepMenu(r, i, anchor) {
-    const p = DRUM_BASE_NOTE + r, t0 = this.stepTime(i);
+    const p = DRUM_BASE_NOTE + r, t0 = this.stepTime(i), res = this.res, step = this.page * STEPS + i + 1;
+    const inStep = (n) => n.p === p && n.t >= t0 - EPS && n.t < t0 + res - EPS; // this step, whatever page shows when an item is tapped
     const ratchet = (n) => this.store.update(() => {
       const c = this.clip;
-      c.notes = c.notes.filter((x) => !(x.p === p && x.t >= t0 - EPS && x.t < t0 + this.res - EPS));
-      for (let k = 0; k < n; k++) c.notes.push({ p, t: r4(t0 + (k * this.res) / n), d: r4(this.res / n), v: k === 0 ? VEL.normal : 84 });
+      c.notes = c.notes.filter((x) => !inStep(x));
+      for (let k = 0; k < n; k++) c.notes.push({ p, t: r4(t0 + (k * res) / n), d: r4(res / n), v: k === 0 ? VEL.normal : 84 });
     }, "notes");
     const vel = (v) => this.store.update(() => {
-      const ns = this.notesAt(p, i);
-      if (!ns.length) this.clip.notes.push({ p, t: t0, d: r4(this.res), v });
+      const ns = this.clip.notes.filter(inStep);
+      if (!ns.length) this.clip.notes.push({ p, t: t0, d: r4(res), v });
       else for (const n of ns) n.v = v;
     }, "notes");
     menu(anchor, [
@@ -211,7 +236,7 @@ export class StepSequencer {
       { label: "Ratchet ×4", onClick: () => ratchet(4) },
       "-",
       { label: "Clear this row", danger: true, onClick: () => this.store.update(() => { this.clip.notes = this.clip.notes.filter((n) => n.p !== p); }, "notes") },
-    ], { title: `${this.t.instrument.state.pads[r].name} · step ${this.page * STEPS + i + 1}` });
+    ], { title: `${this.t.instrument.state.pads[r].name} · step ${step}` });
   }
 
   double() {
@@ -236,7 +261,7 @@ export class StepSequencer {
     let step = -1;
     if (ph !== null) {
       const page = Math.floor(ph / this.pageLen + EPS);
-      if (this.follow && page !== this.page && page < this.pages) { this.page = page; this.renderToolbar(); this.render(); }
+      if (this.follow && page !== this.page && page < this.pages) { this.page = page; this.markPage(); this.render(); }
       if (page === this.page) step = clamp(Math.floor((ph - page * this.pageLen) / this.res + EPS), 0, STEPS - 1);
     }
     if (step === this.lastStep) return;

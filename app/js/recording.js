@@ -71,7 +71,7 @@ export class Recording {
 
   async start({ slot } = {}) {
     const app = this.app, store = this.store, tr = this.transport, p = store.project;
-    if (this.active) return;
+    if (this.active || this.finishing) return; // the last take is still being put away (an audio take's samples)
     if (slot) {
       const t = store.track(slot.trackId);
       if (t && !t.mixer.arm) store.update((p) => { p.tracks.find((x) => x.id === t.id).mixer.arm = true; }, "mixer");
@@ -98,7 +98,6 @@ export class Recording {
     const countIn = playing ? 0 : (this.prefs.countIn | 0) * sig;
     this.mode = slot ? "session" : "arrange";
     if (this.mode === "session") {
-      if (!playing) tr.play(tr.position, { countIn, sessionOnly: true }); // a loop recorded from a stop: the arrangement stays quiet
       this.startG = playing ? tr.quantizedG() : countIn;
       this.startS = null;
       const t = store.track(slot.trackId);
@@ -118,6 +117,9 @@ export class Recording {
       } else {
         this.audioTake = { kind: "session", trackIds: [t.id], scene: slot.scene, startG: this.startG, fixed: (this.prefs.sessionBars | 0) * sig };
       }
+      // a loop recorded from a stop: the arrangement stays quiet. Started once the take's clip is queued, so the
+      // transport's first step already knows of it (started before, the clip began a step late)
+      if (!playing) tr.play(tr.position, { countIn, sessionOnly: true });
     } else {
       this.startS = playing ? tr.songBeat() : tr.position;
       if (!playing) tr.play(tr.position, { countIn });
@@ -141,6 +143,11 @@ export class Recording {
     clearInterval(this.timer);
     const wasCounting = this.state === "countin";
     this.state = "idle";
+    this.finishing = true;
+    try { await this.putAway(wasCounting); } finally { this.finishing = false; }
+  }
+  async putAway(wasCounting) {
+    const store = this.store;
     const now = this.heard();
     for (const [key, hn] of this.held) this.release(key, hn, now);
     this.held.clear();
@@ -162,7 +169,7 @@ export class Recording {
     this.takes.clear();
     this.taken.clear();
     store.locked = false;
-    if (this.content) store.pushUndo(this.snap);
+    if (this.content && this.snap) store.pushUndo(this.snap);
     this.snap = null;
     store.touch("clips");
     this.app.topbar.update();
@@ -194,7 +201,7 @@ export class Recording {
       const pl = t && t.arrangement.find((x) => x.id === take.plId);
       if (pl && take.grow) {
         const len = Math.max(sig, Math.ceil((now.s - pl.start) / sig - 0.05) * sig);
-        if (now.s >= pl.start) { pl.length = len; clip.length = len; }
+        if (now.s >= pl.start) this.grow(t, pl, clip, len, take);
       }
       this.content = this.content || clip.notes.length > 0;
     }
@@ -230,7 +237,7 @@ export class Recording {
         const pl = t && t.arrangement.find((x) => x.id === take.plId);
         if (pl && tr.nextS >= pl.start) {
           const len = Math.max(sig, Math.ceil((tr.nextS - pl.start + 0.5) / sig) * sig);
-          if (len > pl.length) { this.grow(t, pl, clip, len); changed = true; }
+          if (len > pl.length) { this.grow(t, pl, clip, len, take); changed = true; }
         }
       }
     }
@@ -254,11 +261,19 @@ export class Recording {
     this.takes.delete(take.trackId);
   }
 
-  /** A replace take grows: longer, cutting what it now covers */
-  grow(t, pl, clip, len) {
+  /** Where a note played at {s, g} goes in the song: a pickup (played just before the record point) at the record
+   *  point; anything later where it was played (with the loop on, a later pass may be before the record point) */
+  songBeatOf(b) { return this.startG !== undefined && b.g < this.startG - 1e-6 ? Math.max(b.s, this.startS) : b.s; }
+
+  /**
+   * A replace take's length: it cuts what it covers now, of the arrangement as it was before the take (take.before).
+   * It grows a little ahead of the playhead while recording and is cut back to the bar at its end: what it only
+   * covered on the way is whole again.
+   */
+  grow(t, pl, clip, len, take) {
     pl.length = len;
     clip.length = len;
-    t.arrangement = t.arrangement.filter((x) => x !== pl);
+    t.arrangement = take && take.before ? take.before.map((x) => ({ ...x })) : t.arrangement.filter((x) => x !== pl);
     placeClip(t, pl);
   }
 
@@ -274,9 +289,10 @@ export class Recording {
     const c = newMidiClip(p, t, length, "Recorded");
     c.rec = true;
     const pl = { id: uid("a"), clipId: c.id, start, length, offset: 0 };
+    const before = t.arrangement.map((x) => ({ ...x })); // as it was: the take cuts into this, whatever its length becomes
     placeClip(t, pl);
     if (store.ui.selTrack === t.id) store.ui.selClip = c.id;
-    take = { kind: "arrange", trackId: t.id, clipId: c.id, plId: pl.id, grow: !loop, start, loop: !!loop };
+    take = { kind: "arrange", trackId: t.id, clipId: c.id, plId: pl.id, grow: !loop, start, loop: !!loop, before };
     this.takes.set(t.id, take);
     return take;
   }
@@ -307,7 +323,7 @@ export class Recording {
       return { clip, t, maxD: clip.length - t };
     }
     if (this.mode !== "arrange" || (sess && !sess.follow)) return null;
-    const s = Math.max(b.s, this.startS);
+    const s = this.songBeatOf(b);
     if (!this.prefs.overdub) {
       const tk = this.arrangeTake(track, s);
       const t = p.tracks.find((x) => x.id === track.id);
@@ -343,7 +359,7 @@ export class Recording {
       this.store.live(() => {
         tg = this.target(track, b);
         if (!tg) return;
-        if (tg === "leftover") { this.held.set(key, { trackId: track.id, leftover: true, p: n, s: Math.max(b.s, this.startS), g: b.g, v: vel }); return; }
+        if (tg === "leftover") { this.held.set(key, { trackId: track.id, leftover: true, p: n, s: this.songBeatOf(b), g: b.g, v: vel }); return; }
         const note = { p: n, t: r3(tg.t), d: 0.05, v: vel };
         tg.clip.notes.push(note);
         this.taken.set(note, tg.clip);

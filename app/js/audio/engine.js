@@ -192,7 +192,9 @@ class Channel {
     this.high.gain.value = m.eq.high;
     this.setComp(!!m.comp);
     const audible = !m.mute && (!anySolo || m.solo);
-    this.mute.gain.setTargetAtTime(audible ? 1 : 0, this.engine.ctx.currentTime, 0.01);
+    // an export's graph is new: a muted track is silent from its first sample (a fade from 1 let its first hit through)
+    if (this.engine.offline) this.mute.gain.value = audible ? 1 : 0;
+    else this.mute.gain.setTargetAtTime(audible ? 1 : 0, this.engine.ctx.currentTime, 0.01);
   }
 
   /** The automated value for a lane key (0..1 in the lane's terms) as the param's own value */

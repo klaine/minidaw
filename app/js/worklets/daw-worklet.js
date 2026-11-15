@@ -121,6 +121,7 @@ class SchwungProcessor extends AudioWorkletProcessor {
     this.ok = false;
     this.q = new EventQueue();
     this.held = new Set();
+    this.seqHeld = new Set(); // of them, the notes the sequencer started (timed events)
     try {
       this.e = o.api === "bizar" ? bizarAdapter(o.wasm, o.kind) : waAdapter(o.wasm, o.kind);
       this.ok = true;
@@ -132,6 +133,9 @@ class SchwungProcessor extends AudioWorkletProcessor {
   }
 
   onMessage(d) {
+    // the instrument was let go of (its track deleted, another project opened): the engine is dropped and process()
+    // ends, so the browser can free the processor and its wasm memory instead of rendering it for ever
+    if (d.t === "dispose") { this.dead = true; this.ok = false; this.e = null; this.q.list.length = 0; return; }
     if (!this.ok) {
       if (d.id) this.port.postMessage({ t: d.t === "flush" ? "flushed" : "got", id: d.id, val: null });
       return;
@@ -143,6 +147,9 @@ class SchwungProcessor extends AudioWorkletProcessor {
         case "get": this.port.postMessage({ t: "got", id: d.id, val: this.e.get(d.key) }); break;
         case "tempo": this.e.tempo(d.bpm, d.run); break;
         case "stop": this.stopAll(); break;
+        // a clip of the sequencer ends here (a session clip stopped or replaced): what it still had queued from d.time
+        // on is dropped (its note-offs), and the notes it holds are let go at d.time. Notes played live stay.
+        case "cut": this.q.list = this.q.list.filter((e) => !(e.m && e.time >= d.time - 1e-4)); this.q.push({ time: d.time, cut: true }); break;
         case "flush": this.port.postMessage({ t: "flushed", id: d.id }); break;
       }
     } catch (err) {
@@ -154,16 +161,20 @@ class SchwungProcessor extends AudioWorkletProcessor {
     this.q.clear();
     for (const k of this.held) this.e.midi(0x80 | (k >> 8), k & 127, 0);
     this.held.clear();
+    this.seqHeld.clear();
     this.e.midi(0xb0, 64, 0);   // sustain up
     this.e.midi(0xb0, 123, 0);  // all notes off
   }
 
   apply(ev) {
-    if (ev.m) {
+    if (ev.cut) {
+      for (const k of this.seqHeld) { this.e.midi(0x80 | (k >> 8), k & 127, 0); this.held.delete(k); }
+      this.seqHeld.clear();
+    } else if (ev.m) {
       const [s, d1 = 0, d2 = 0] = ev.m;
       const type = s & 0xf0, key = ((s & 15) << 8) | d1;
-      if (type === 0x90 && d2 > 0) this.held.add(key);
-      else if (type === 0x80 || type === 0x90) this.held.delete(key);
+      if (type === 0x90 && d2 > 0) { this.held.add(key); if (ev.time > 0) this.seqHeld.add(key); } // timed: the sequencer's
+      else if (type === 0x80 || type === 0x90) { this.held.delete(key); this.seqHeld.delete(key); }
       this.e.midi(s, d1, d2);
     } else if (ev.key !== undefined) {
       this.e.set(ev.key, String(ev.val));
@@ -178,6 +189,7 @@ class SchwungProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
+    if (this.dead) return false;
     const out = outputs[0];
     if (!this.ok || !out || !out.length) return true;
     const l = out[0], r = out[1] || out[0];
@@ -210,6 +222,7 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       if (e.data.t === "start") { this.on = true; this.startFrame = currentFrame; this.port.postMessage({ t: "started", time: currentTime }); }
       else if (e.data.t === "stop") { this.flush(); this.on = false; this.port.postMessage({ t: "stopped", time: currentTime }); }
+      else if (e.data.t === "dispose") { this.on = false; this.dead = true; this.chunk = []; }
     };
   }
   flush() {
@@ -226,6 +239,7 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this.frames = 0;
   }
   process(inputs, outputs) {
+    if (this.dead) return false;
     const input = inputs[0];
     if (outputs[0]) for (const ch of outputs[0]) ch.fill(0);
     if (!this.on || !input || !input.length) return true;

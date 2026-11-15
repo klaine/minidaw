@@ -1,6 +1,6 @@
 // An audio clip: its sample's waveform with the part the clip plays, Warp (follow the song's tempo, by resampling),
 // the sample's own tempo, the clip's start in the sample (drag the start marker), length and gain.
-import { h, clamp } from "../util.js";
+import { h, clamp, lengthStep } from "../util.js";
 import { gestures, Surface } from "./gestures.js";
 import { knob, numberDrag, toggle } from "./controls.js";
 import { guessBpm } from "../model.js";
@@ -43,14 +43,14 @@ export class AudioClipEditor {
       btn("÷2", () => { set((x) => { x.bpm = Math.max(30, x.bpm / 2); }); this.renderToolbar(); this.surf.draw(); }, "Half the sample's tempo"),
       btn("×2", () => { set((x) => { x.bpm = Math.min(300, x.bpm * 2); }); this.renderToolbar(); this.surf.draw(); }, "Double the sample's tempo"),
       btn("Guess", () => { const b = this.buffer; const g = b && guessBpm(b.duration - (this.clip.offset || 0)); if (g) { set((x) => { x.bpm = g; x.warp = true; }); this.renderToolbar(); this.surf.draw(); } }, "Guess the tempo from its length (whole bars)"),
-      h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(this.clip.length - (this.clip.length > 4 ? 4 : 1))), len, btn("+", () => setLen(this.clip.length + (this.clip.length >= 4 ? 4 : 1)))),
+      h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(lengthStep(this.clip.length, -1))), len, btn("+", () => setLen(lengthStep(this.clip.length, 1)))),
       btn("Fit", () => { const b = this.buffer; if (!b) return; setLen(Math.max(0.25, Math.round(((b.duration - (this.clip.offset || 0)) / this.secPerBeat()) * 4) / 4)); }, "Length to the end of the sample"),
       btn("Start ⟲", () => { set((x) => { x.offset = 0; }); this.surf.draw(); }, "Start at the beginning of the sample"),
       gain,
       h("span", { class: "dim ac-info" }, this.app.samples.name(c.sampleId)));
   }
 
-  update() { this.surf.draw(); }
+  update(c) { if (c && (c.reason === "undo" || c.reason === "project")) this.renderToolbar(); this.surf.draw(); }
   frame() { if (this.loopBtn) this.loopBtn.sync(); }
 
   setupGestures() {
@@ -60,9 +60,11 @@ export class AudioClipEditor {
         const b = this.buffer;
         if (!b) return false;
         const x0 = this.secX(this.clip.offset || 0), x1 = this.secX((this.clip.offset || 0) + this.clip.length * this.secPerBeat());
+        // only the two markers drag (the nearer one, within a finger's reach): a swipe elsewhere moves nothing
+        const d0 = Math.abs(pos.x - x0), d1 = Math.abs(pos.x - x1);
+        if (Math.min(d0, d1) > 28) return false;
         this.store.begin();
-        drag = Math.abs(pos.x - x1) < 24 ? "end" : "start";
-        void x0;
+        drag = d1 <= d0 ? "end" : "start";
         return true;
       },
       dragMove: (pos) => {
@@ -75,7 +77,7 @@ export class AudioClipEditor {
         }, "clips");
         this.surf.draw();
       },
-      dragEnd: () => { this.store.commit("clips"); this.renderToolbar(); drag = null; },
+      dragEnd: (pos, e, cancelled) => { if (cancelled) this.store.cancel(); else this.store.commit("clips"); this.renderToolbar(); this.surf.draw(); drag = null; },
       tap: (pos) => {
         // audition from here
         const b = this.buffer;

@@ -191,6 +191,40 @@ console.log("playing chosen clips from the session");
   ctx.currentTime = 0;
 }
 
+console.log("session clips and edits of the session");
+{
+  const { p, t, events, tr, ctx } = rig();
+  const sc = newMidiClip(p, t, 4);
+  sc.notes.push({ p: 72, t: 0, d: 0.5, v: 100 });
+  t.slots[1] = sc.id;
+  tr.offline = false;
+  tr.toggleClip(t.id, 1);
+  clearInterval(tr.timer);
+  for (let i = 0; i < 8; i++) tr.step();
+  check(tr.session.get(t.id).playing.scene === 1, "the clip plays from scene 2");
+  // a scene inserted above it: the same clip, a row lower
+  p.scenes.splice(0, 0, { name: "" }); t.slots.splice(0, 0, null);
+  tr.syncSession();
+  check(tr.session.get(t.id).playing.scene === 2 && !tr.session.get(t.id).queued, "a scene inserted above: it's followed to its new row, and plays on");
+  // its slot emptied (the clip deleted from the session): it stops at the next step
+  t.slots[2] = null;
+  tr.syncSession();
+  events.length = 0;
+  for (let i = 0; i < 20; i++) tr.step();
+  check(!tr.session.get(t.id).playing, "its slot emptied: it stops");
+  check(!events.some((e) => e.k === "on"), "and is not heard again");
+  tr.syncSession();
+  check(!tr.session.get(t.id).queued, "nothing is left queued");
+  // a clip about to start whose slot is emptied never starts
+  t.slots[0] = sc.id;
+  tr.toggleClip(t.id, 0);
+  t.slots[0] = null;
+  tr.syncSession();
+  check(!tr.session.get(t.id).queued, "a queued clip whose slot was emptied is dropped");
+  tr.stop();
+  ctx.currentTime = 0;
+}
+
 console.log("swing");
 {
   const { p, t, events, tr } = rig();

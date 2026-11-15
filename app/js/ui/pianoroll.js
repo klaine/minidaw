@@ -1,7 +1,7 @@
 // The piano roll for a MIDI clip, with a lane under it for velocity or the clip's envelopes (automation that plays
 // with the clip). Draw tool: tap adds a note (drag to set its length), tap a note removes it, drag a note moves it, its
 // right edge resizes it. Select tool: drag a box, then move or resize the selection. Two fingers pan, pinch zooms.
-import { h, clamp, isBlack, noteName, envAt } from "../util.js";
+import { h, clamp, isBlack, noteName, envAt, lengthStep } from "../util.js";
 import { gestures, Surface } from "./gestures.js";
 import { menu, segmented, select, toast } from "./controls.js";
 import { laneChoices, DRUM_BASE_NOTE } from "../model.js";
@@ -87,7 +87,7 @@ export class PianoRoll {
     const lane = select(choices.map((c) => ({ value: c.key, label: c.name + (clip.env && clip.env[c.key] && clip.env[c.key].length ? " •" : "") })), this.laneKey, (v) => { this.laneKey = v; this.surf.draw(); }, "pr-lane");
     this.loopBtn = loopButton(this.app, this.trackId, () => this.clip);
     this.toolbar.append(...[this.loopBtn, view, tool, grid,
-      h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(this.clip.length - (this.clip.length > 4 ? 4 : 1)), "Shorter"), len, btn("+", () => setLen(this.clip.length + (this.clip.length >= 4 ? 4 : 1)), "Longer")),
+      h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(lengthStep(this.clip.length, -1)), "Shorter"), len, btn("+", () => setLen(lengthStep(this.clip.length, 1)), "Longer")),
       btn("×2", () => this.duplicateLoop(), "Double the clip, its notes repeated"),
       btn("Quantize", () => this.quantize(), "Snap the selected notes (or all) to the grid"),
       btn("−12", () => this.transpose(-12), "Octave down"), btn("−1", () => this.transpose(-1)), btn("+1", () => this.transpose(1)), btn("+12", () => this.transpose(12), "Octave up"),
@@ -186,25 +186,15 @@ export class PianoRoll {
           if (this.drums && p >= DRUM_BASE_NOTE && p < DRUM_BASE_NOTE + 16) store.ui.drumPad = p - DRUM_BASE_NOTE; // the pad "Pad sounds" opens
         }
       },
-      tap: (pos) => {
-        const r = this.region(pos);
-        if (r === "lane") { this.laneTap(pos); return; }
-        if (r !== "grid") return;
-        const n = this.noteAt(pos.x, pos.y);
-        if (store.ui.tool === "draw") {
-          if (n) { store.update(() => { this.clip.notes = this.clip.notes.filter((x) => x !== n); }, "notes"); this.sel.delete(n); }
-          else this.addNote(pos);
-        } else {
-          if (n) { if (!pos.shift && !pos.meta) this.sel.clear(); if (this.sel.has(n) && (pos.shift || pos.meta)) this.sel.delete(n); else this.sel.add(n); this.audition(n.p, n.v); }
-          else this.sel.clear();
-        }
-        this.surf.draw();
-      },
+      tap: (pos) => this.tap(pos),
       doubleTap: (pos) => {
         const r = this.region(pos);
         if (r === "lane") { this.laneDouble(pos); return; }
         if (r === "ruler") { this.fit(); return; }
-        if (r !== "grid" || store.ui.tool === "draw") return;
+        if (r !== "grid") return;
+        // drawing: notes tapped in quick succession are each a tap (a "double tap" would swallow the second)
+        // (twice on the same spot stays one note: the second isn't a removal of the note the first just made)
+        if (store.ui.tool === "draw") { if (this.noteAt(pos.x, pos.y) !== this.justAdded) this.tap(pos); return; }
         const n = this.noteAt(pos.x, pos.y);
         if (n) { store.update(() => { this.clip.notes = this.clip.notes.filter((x) => x !== n); }, "notes"); this.sel.delete(n); }
         else this.addNote(pos);
@@ -257,6 +247,7 @@ export class PianoRoll {
           return true;
         }
         if (draw) {
+          if (this.floorT(this.xb(pos.x)) >= this.clip.length) return false; // past the clip's end: nothing to draw
           store.begin();
           const nn = this.addNote(pos, true);
           drag = { kind: "draw", n: nn };
@@ -299,8 +290,10 @@ export class PianoRoll {
         }
         this.surf.draw();
       },
-      dragEnd: () => {
+      dragEnd: (pos, e, cancelled) => {
         if (!drag) return;
+        // the system took the touch, or a second finger made it a pinch: the notes go back as they were
+        if (cancelled && drag.kind !== "pan" && drag.kind !== "box") { drag = null; this.sel.clear(); store.cancel(); this.surf.draw(); return; }
         if (drag.kind === "box") {
           const a = drag.a, b = drag.b;
           const t0 = this.xb(Math.min(a.x, b.x)), t1 = this.xb(Math.max(a.x, b.x));
@@ -334,6 +327,23 @@ export class PianoRoll {
     });
   }
 
+  /** A tap on the grid or the lane */
+  tap(pos) {
+    const store = this.store;
+    const r = this.region(pos);
+    if (r === "lane") { this.laneTap(pos); return; }
+    if (r !== "grid") return;
+    const n = this.noteAt(pos.x, pos.y);
+    if (store.ui.tool === "draw") {
+      if (n) { store.update(() => { this.clip.notes = this.clip.notes.filter((x) => x !== n); }, "notes"); this.sel.delete(n); }
+      else this.addNote(pos);
+    } else {
+      if (n) { if (!pos.shift && !pos.meta) this.sel.clear(); if (this.sel.has(n) && (pos.shift || pos.meta)) this.sel.delete(n); else this.sel.add(n); this.audition(n.p, n.v); }
+      else this.sel.clear();
+    }
+    this.surf.draw();
+  }
+
   addNote(pos, live = false) {
     const clip = this.clip;
     const t = Math.max(0, this.floorT(this.xb(pos.x)));
@@ -343,6 +353,7 @@ export class PianoRoll {
     (live ? this.store.live : this.store.update).call(this.store, () => { clip.notes.push(n); }, "notes");
     this.sel.clear();
     this.sel.add(n);
+    this.justAdded = n;
     this.audition(p, n.v);
     return n;
   }

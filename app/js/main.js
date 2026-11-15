@@ -124,13 +124,14 @@ class App {
   }
 
   setupSplitter(el) {
+    this.splitterEl = el;
     let start = null;
     const saved = parseFloat(localStorage.getItem("minidaw.panelH") || "0");
     if (saved) document.documentElement.style.setProperty("--panel-h", saved + "px");
     el.addEventListener("pointerdown", (e) => { el.setPointerCapture(e.pointerId); start = { y: e.clientY, h: this.views.panel.el.getBoundingClientRect().height }; });
     el.addEventListener("pointermove", (e) => {
       if (!start) return;
-      const hgt = Math.max(120, Math.min(innerHeight - 160, start.h + (start.y - e.clientY)));
+      const hgt = Math.max(120, Math.min(this.maxPanel(), start.h + (start.y - e.clientY)));
       document.documentElement.style.setProperty("--panel-h", hgt + "px");
     });
     const end = () => {
@@ -144,18 +145,31 @@ class App {
       const cur = this.views.panel.el.getBoundingClientRect().height;
       this.setPanelHeight(cur > 200 ? 120 : Math.round(innerHeight * 0.42));
     });
+    // the iPad turned, or a height remembered from the other orientation: the panel never takes more than there is
+    const fit = () => {
+      if (this.views.panel.el.getBoundingClientRect().height > this.maxPanel() + 1) document.documentElement.style.setProperty("--panel-h", Math.round(this.maxPanel()) + "px");
+      this.views.panel.update();
+    };
+    window.addEventListener("resize", fit);
+    requestAnimationFrame(fit);
   }
   setPanelHeight(px) {
     document.documentElement.style.setProperty("--panel-h", Math.round(px) + "px");
     try { localStorage.setItem("minidaw.panelH", String(Math.round(px))); } catch (_) { /* private mode */ }
   }
+  /** The tallest the panel can be: the top bar (two rows in portrait), the ruler and a track stay in sight */
+  maxPanel() {
+    const app = document.getElementById("app").getBoundingClientRect(), cs = getComputedStyle(document.getElementById("app"));
+    const inner = app.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom); // less the safe areas (the home indicator)
+    return Math.max(160, inner - this.topbar.el.getBoundingClientRect().height - this.splitterEl.getBoundingClientRect().height - 124);
+  }
   /** Is the bottom panel tall (most of the screen: room to play or edit)? */
-  get panelTall() { return this.views.panel.el.getBoundingClientRect().height > innerHeight * 0.55; }
+  get panelTall() { return this.views.panel.el.getBoundingClientRect().height > Math.min(innerHeight * 0.55, this.maxPanel() - 40); }
   /** The panel tall, or back to what it was */
   togglePanelTall() {
     const cur = this.views.panel.el.getBoundingClientRect().height;
     if (this.panelTall) this.setPanelHeight(this.panelWas && this.panelWas < innerHeight * 0.55 ? this.panelWas : innerHeight * 0.42);
-    else { this.panelWas = cur; this.setPanelHeight(innerHeight - 190); } // the top bar, the ruler and a track stay in sight
+    else { this.panelWas = cur; this.setPanelHeight(this.maxPanel()); }
     this.views.panel.update();
   }
 
@@ -190,6 +204,7 @@ class App {
     const p = this.store.project;
     this.engine.sync(p);
     if (c.reason !== "live-mixer") this.transport.refreshAutomated();
+    if (!c.live) this.transport.syncSession();
     for (const k of ["arrange", "session", "mixer"]) if (k === this.store.ui.view) this.views[k].update(c);
     if (!c.live || c.reason === "notes") this.views.panel.update(c);
     this.topbar.update();
@@ -302,6 +317,8 @@ class App {
       for (const t of p.tracks) if (states.has(t.id) && t.instrument) t.instrument.state = states.get(t.id);
       const i = p.tracks.findIndex((t) => t.id === id);
       if (i >= 0) p.tracks.splice(i, 1);
+      // the selection moves to a neighbour before the views hear of the change (the panel would show no track)
+      if (this.store.ui.selTrack === id) { const n = p.tracks[Math.min(i, p.tracks.length - 1)]; this.store.ui.selTrack = n ? n.id : null; this.store.ui.selClip = null; }
     }, "tracks");
     this.store.fixSelection();
   }
@@ -392,6 +409,7 @@ class App {
   // ---- keys ----
   onKey(e) {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (document.querySelector(".sheet, .menu-veil")) return; // a dialog or a menu is open: keys aren't for what's behind it
     const k = e.key;
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) this.store.redo(); else this.store.undo(); return; }
     if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === "s") { e.preventDefault(); this.save().then(() => toast("Saved")); return; }

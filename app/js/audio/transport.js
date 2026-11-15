@@ -81,7 +81,7 @@ export class Transport {
 
   // ---- play / stop ----
   /** Play from song beat `from`; countIn: beats of clicks first (the song is silent until `from`) */
-  play(from = this.position, { countIn = 0, keepSession = false, sessionOnly = false } = {}) {
+  play(from = this.position, { countIn = 0, keepSession = false, sessionOnly = false, prepare = null } = {}) {
     if (this.playing) this.halt();
     const p = this.project;
     // from a stop nothing is playing in the session: every track follows the arrangement, except ones being launched
@@ -89,6 +89,7 @@ export class Transport {
     if (!keepSession) for (const s of this.session.values()) if (!s.queued) { s.playing = null; s.follow = true; }
     if (sessionOnly) this.sessionOnly();
     this.playing = true;
+    this.sceneCount = p.scenes.length;
     this.playStart = from;
     this.prerollEnd = countIn > 0 ? from : null;
     const t = this.ctx.currentTime + 0.05;
@@ -100,6 +101,7 @@ export class Transport {
     this.refreshAutomated();
     this.engine.setTempo(p.bpm, true);
     for (const s of this.session.values()) if (s.queued && !(s.queued.gAt > 0)) s.queued.gAt = 0;
+    if (prepare) prepare(); // what must hold before the first step is scheduled (a seek's session clips, in phase)
     if (!this.offline) {
       this.tick();
       this.timer = setInterval(() => this.tick(), 25);
@@ -138,9 +140,10 @@ export class Transport {
         if (clip) phase.set(id, (((g - s.playing.gStart) % clip.length) + clip.length) % clip.length);
       }
       this.halt();
-      this.play(beat, { keepSession: true });
-      for (const [id, local] of phase) this.session.get(id).playing.gStart = -local;
-      for (const s of this.session.values()) if (s.queued) s.queued.gAt = 0;
+      this.play(beat, { keepSession: true, prepare: () => {
+        for (const [id, local] of phase) this.session.get(id).playing.gStart = -local;
+        for (const s of this.session.values()) if (s.queued) s.queued.gAt = 0;
+      } });
     } else {
       this.position = beat;
       this.applyStatic();
@@ -216,12 +219,38 @@ export class Transport {
     this.emit("session");
   }
   get overridden() { for (const s of this.session.values()) if (!s.follow) return true; return false; }
+  /**
+   * After an edit of the project: a playing or queued session clip follows its slot (a scene inserted or removed
+   * above it moved it), and one whose slot was emptied stops (at the next step while playing).
+   */
+  syncSession() {
+    let changed = false;
+    // a scene more or less than at the last look: the rows below it moved by one
+    const n = this.project.scenes.length, d = this.sceneCount === undefined ? 0 : n - this.sceneCount;
+    this.sceneCount = n;
+    for (const t of this.project.tracks) {
+      const s = this.session.get(t.id);
+      if (!s) continue;
+      for (const key of ["playing", "queued"]) {
+        const x = s[key];
+        if (!x || !x.clipId || t.slots[x.scene] === x.clipId) continue;
+        if (d !== 0 && t.slots[x.scene + d] === x.clipId) x.scene += d; // (the same clip may sit in other slots too: not those)
+        else if (key === "queued") s.queued = null;
+        else if (this.playing) s.queued = { scene: -1, clipId: null, gAt: this.nextG };
+        else s.playing = null;
+        changed = true;
+      }
+    }
+    if (changed) this.emit("session");
+  }
 
   activate(track, s, time) {
     const q = s.queued;
     s.queued = null;
     const ch = this.engine.channel(track.id);
     if (ch) ch.stopSources(time);
+    // the clip that played ends here: its sounding notes too (a long pad note would ring on over the next clip)
+    if (ch && ch.instrument && ch.instrument.cut) ch.instrument.cut(time);
     if (q.back) { s.playing = null; s.follow = true; this.fresh.add(track.id); }
     else if (!q.clipId) { s.playing = null; s.follow = false; }
     else { s.playing = { clipId: q.clipId, scene: q.scene, gStart: this.nextG }; s.follow = false; }
@@ -231,11 +260,27 @@ export class Transport {
   // ---- the steps ----
   tick() {
     if (!this.playing) return;
+    // the timer came late (a tab in the background, a long job on the page): what was missed is skipped. Scheduled
+    // now it would all sound at once.
+    if (this.ctx.currentTime - this.nextTime > 0.06) this.skipTo(this.ctx.currentTime + 0.03);
     const horizon = this.ctx.currentTime + LOOKAHEAD;
     let n = 0;
     while (this.nextTime < horizon && n++ < 64) this.step();
     for (const ch of this.engine.channels.values()) if (ch.instrument) ch.instrument.flushEvents();
     if (this.segments.length > 96) this.segments.splice(0, this.segments.length - 64);
+  }
+
+  /** Move the clocks to audio time `time` without scheduling what lies between (the song goes on from there) */
+  skipTo(time) {
+    const spb = 60 / this.project.bpm, beats = (time - this.nextTime) / spb;
+    if (!(beats > 0)) return;
+    const loop = this.loopRange();
+    let s = this.nextS + beats;
+    if (loop && this.nextS < loop.end - EPS && s >= loop.end) s = loop.start + ((s - loop.start) % (loop.end - loop.start));
+    this.segments.push({ t0: this.nextTime, g0: this.nextG, s0: this.nextS, len: beats, spb });
+    this.nextG += beats; this.nextS = s; this.nextTime = time;
+    for (const t of this.project.tracks) this.fresh.add(t.id); // audio clips start again, in place
+    for (const ch of this.engine.channels.values()) if (ch.stopSources) ch.stopSources(time);
   }
 
   loopRange() {
@@ -248,6 +293,14 @@ export class Transport {
     const p = this.project;
     const spb = 60 / p.bpm;
     const g0 = this.nextG, s0 = this.nextS, t0 = this.nextTime;
+    // the tempo was changed while playing: the instruments hear of it (their own tempo-synced parts) and audio clips
+    // start again in place at their new speed (they kept the old one, and ran over the next clip)
+    if (!this.offline && this.stepBpm !== undefined && this.stepBpm !== p.bpm) {
+      this.engine.setTempo(p.bpm, true);
+      for (const ch of this.engine.channels.values()) if (ch.stopSources) ch.stopSources(t0);
+      for (const t of p.tracks) this.fresh.add(t.id);
+    }
+    this.stepBpm = p.bpm;
     let len = STEP;
     const loop = this.loopRange();
     const looping = loop && s0 < loop.end - EPS;
@@ -271,7 +324,9 @@ export class Transport {
     this.nextTime = t0 + len * spb;
     if (looping && this.nextS >= loop.end - EPS) {
       this.nextS = loop.start;
-      for (const t of p.tracks) this.fresh.add(t.id);
+      // the tracks on the arrangement start their clips again; one playing a session clip plays on (marked fresh, its
+      // audio would get a second player)
+      for (const t of p.tracks) { const s = this.offline ? null : this.session.get(t.id); if (!s || !s.playing) this.fresh.add(t.id); }
     }
   }
 
@@ -422,6 +477,12 @@ export class Transport {
     if (clip && clip.env && clip.env[key] && clip.env[key].length) return envAt(clip.env[key], local);
     const lane = track.automation[key];
     if (lane && lane.length && (!sess || sess.follow)) return envAt(lane, s);
+    // nothing automates it here: a mixer setting goes back to the track's own (it stayed where the last envelope
+    // left it, and the fader did nothing); an instrument's parameter stays as it is
+    const m = track.mixer;
+    if (key === "vol") return m.vol;
+    if (key === "pan") return (m.pan + 1) / 2;
+    if (key === "sendA" || key === "sendB") return m[key];
     return null;
   }
 
@@ -471,11 +532,11 @@ export class Transport {
   }
 
   // ---- offline ----
-  /** Schedule song beats [from, to) from time 0 in one go (an OfflineAudioContext, before startRendering) */
-  renderRange(from, to) {
+  /** Schedule song beats [from, to) from time `at` in one go (an OfflineAudioContext, before startRendering) */
+  renderRange(from, to, at = 0) {
     this.loopOverride = null;
     this.playing = true;
-    this.nextTime = 0; this.nextG = 0; this.nextS = from;
+    this.nextTime = at; this.nextG = 0; this.nextS = from;
     this.segments = [];
     this.fresh = new Set(this.project.tracks.map((x) => x.id));
     this.autoInit = new Set();

@@ -68,6 +68,22 @@ function testSchwung(kind, api, wasmRel) {
   check(rms(Q) < 1e-3, `quiet after stop (rms ${rms(Q).toFixed(5)})`);
   msg(p, { t: "flush", id: 9 });
   check(p.sent.some((m) => m.t === "flushed" && m.id === 9), "flush answers");
+  // a clip cut short (a session clip stopped): its long note ends at the cut, not at its own end
+  const t1 = currentTime + 0.05;
+  msg(p, { t: "ev", list: [{ time: t1, m: [0x90, 57, 110] }, { time: t1 + 30, m: [0x80, 57, 0] }] });
+  render(p, 40);
+  check(p.seqHeld.size === 1, "a sequenced note is held");
+  msg(p, { t: "ev", list: [{ time: 0, m: [0x90, 72, 100] }] }); // a key played live, held through the cut
+  msg(p, { t: "cut", time: currentTime + 0.02 });
+  render(p, 20);
+  check(p.seqHeld.size === 0 && p.q.list.length === 0, "cut: the note is let go and its queued note-off dropped");
+  check(p.held.size === 1, "a note played live stays held through the cut");
+  msg(p, { t: "stop" });
+  // let go of: the processor ends (process() false) so the browser can free it
+  const p3 = new registry.schwung({ processorOptions: { kind, api, wasm: null } });
+  const alive = p3.process([], [[new Float32Array(128), new Float32Array(128)]]);
+  msg(p3, { t: "dispose" });
+  check(alive === true && p3.process([], [[new Float32Array(128), new Float32Array(128)]]) === false, "disposed: process() ends");
   // a second instance shares the compiled module (no bytes)
   const p2 = new registry.schwung({ processorOptions: { kind, api, wasm: null } });
   check(p2.sent.find((m) => m.t === "ready").ok, "a second instance starts from the shared module");

@@ -136,7 +136,8 @@ class WorkletInstrument {
   }
   connect(dest) { this.node.connect(dest); }
   disconnect() { try { this.node.disconnect(); } catch (_) { /* not connected */ } }
-  dispose() { this.stop(); this.disconnect(); this.node.port.onmessage = null; }
+  /** Let go of it: its processor ends too (a processor that keeps returning true is rendered, and kept, for ever) */
+  dispose() { this.stop(); this.disconnect(); try { this.post({ t: "dispose" }); } catch (_) { /* closed */ } this.node.port.onmessage = null; }
   midi(m, time = 0) { this.queue.push({ time, m }); if (!time) this.flushEvents(); }
   noteOn(note, vel, time = 0) { this.midi([0x90, note & 127, Math.max(1, Math.min(127, vel | 0))], time); }
   noteOff(note, time = 0) { this.midi([0x80, note & 127, 0], time); }
@@ -147,6 +148,8 @@ class WorkletInstrument {
   }
   flush() { this.flushEvents(); return this.request({ t: "flush" }); }
   stop() { this.queue = []; this.post({ t: "stop" }); }
+  /** The sequencer's clip ends at `time`: its notes are let go then, and what it had queued after is dropped */
+  cut(time) { this.flushEvents(); this.post({ t: "cut", time }); }
   /** v01 -> the parameter's range: the value a set_param (or the editor's knob) takes */
   denorm(key, v) {
     const p = this.params.get(key);

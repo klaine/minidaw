@@ -9,18 +9,25 @@ import { deepCopy } from "../util.js";
 
 export const EXPORT_RATE = 44100;
 
+// A new graph's master compressor ducks whatever comes in its first 150 ms: the song starts after a silent lead-in,
+// which is cut off the result (the first downbeat used to come out 6 to 13 dB down)
+const LEAD = 0.25;
+
 async function renderOnce(project, samples, states, from, to, tail) {
   const spb = 60 / project.bpm;
-  const frames = Math.ceil(((to - from) * spb + tail) * EXPORT_RATE);
+  const lead = Math.round(LEAD * EXPORT_RATE);
+  const frames = Math.ceil(((to - from) * spb + tail) * EXPORT_RATE) + lead;
   const ctx = new OfflineAudioContext(2, frames, EXPORT_RATE);
   const engine = new AudioEngine(ctx, samples, { offline: true });
   engine.trackLookup = (id) => project.tracks.find((t) => t.id === id);
   await engine.sync(project, { states });
   const transport = new Transport(engine, () => project, { offline: true });
-  transport.renderRange(from, to);
+  transport.renderRange(from, to, lead / EXPORT_RATE);
   await engine.flushAll();
-  const buffer = await ctx.startRendering();
+  const rendered = await ctx.startRendering();
   engine.dispose();
+  const buffer = new AudioBuffer({ length: rendered.length - lead, numberOfChannels: rendered.numberOfChannels, sampleRate: EXPORT_RATE });
+  for (let c = 0; c < rendered.numberOfChannels; c++) buffer.copyToChannel(rendered.getChannelData(c).subarray(lead), c);
   return buffer;
 }
 

@@ -100,6 +100,7 @@ export class SampleBank {
     this.info = new Map();    // id -> {name, bpm?}
     this.loading = new Map();
     this.peaksCache = new Map();
+    this.failed = new Set();  // ids this browser couldn't decode
     for (const s of BUILTIN_SAMPLES) this.info.set(s.id, s);
   }
 
@@ -121,8 +122,9 @@ export class SampleBank {
       } else {
         const rec = await db.loadSample(id).catch(() => null);
         if (rec) {
-          b = await decode(ctx, rec.bytes);
           this.info.set(id, { id, name: rec.name, bpm: rec.bpm });
+          // a file this browser can't decode (an AIFF from Safari, in Chrome) is a silent sample: the project still opens
+          b = await decode(ctx, rec.bytes).catch((e) => { console.warn("sample " + rec.name + " can't be decoded here", e); this.failed.add(id); return null; });
         }
       }
       if (b) this.buffers.set(id, b);

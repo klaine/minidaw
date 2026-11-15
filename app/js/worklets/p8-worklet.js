@@ -17,6 +17,7 @@ class P8Processor extends AudioWorkletProcessor {
     this.ok = false;
     this.q = new EventQueue();
     this.held = new Set();
+    this.seqHeld = new Set(); // of them, the notes the sequencer started (timed events)
     this.split = midiSplitter();
     this.blocks = 0;
     this.slot = -1;
@@ -37,27 +38,36 @@ class P8Processor extends AudioWorkletProcessor {
   }
 
   onMessage(d) {
+    // let go of (as daw-worklet.js): the firmware is dropped and process() ends
+    if (d.t === "dispose") { this.dead = true; this.ok = false; this.e = null; this.q.list.length = 0; return; }
     if (!this.ok) { if (d.id) this.port.postMessage({ t: d.t === "flush" ? "flushed" : "failed", id: d.id }); return; }
     try { this.handle(d); } catch (err) {
       if (d.id) this.port.postMessage({ t: "failed", id: d.id, error: String((err && err.message) || err) });
     }
   }
 
-  send(m) {
+  send(m, timed = false) {
     const s = m[0] & 0xf0, key = ((m[0] & 15) << 8) | (m[1] | 0);
-    if (s === 0x90 && m[2] > 0) this.held.add(key);
-    else if (s === 0x80 || s === 0x90) this.held.delete(key);
+    if (s === 0x90 && m[2] > 0) { this.held.add(key); if (timed) this.seqHeld.add(key); }
+    else if (s === 0x80 || s === 0x90) { this.held.delete(key); this.seqHeld.delete(key); }
     this.e.send(m);
+  }
+  /** A queued event: MIDI, or the end of a sequencer's clip (its held notes let go; as daw-worklet.js) */
+  apply(ev) {
+    if (ev.cut) { for (const k of this.seqHeld) { this.e.send([0x80 | (k >> 8), k & 127, 0]); this.held.delete(k); } this.seqHeld.clear(); }
+    else this.send(ev.m, ev.time > 0);
   }
 
   handle(d) {
     const e = this.e, x = e.x;
     switch (d.t) {
       case "ev": for (const ev of d.list) this.q.push(ev); break;
+      case "cut": this.q.list = this.q.list.filter((ev) => !(ev.m && ev.m[0] < 0xf0 && ev.time >= d.time - 1e-4)); this.q.push({ time: d.time, cut: true }); break;
       case "stop":
         this.q.clear();
         for (const k of this.held) e.send([0x80 | (k >> 8), k & 127, 0]);
         this.held.clear();
+        this.seqHeld.clear();
         e.send([0xb0, 64, 0]);
         e.send([0xb0, 123, 0]);
         e.send([0xfc]); // MIDI clock: Stop
@@ -79,12 +89,13 @@ class P8Processor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
+    if (this.dead) return false;
     const out = outputs[0];
     if (!this.ok || !out || !out.length) return true;
     const n = out[0].length;
     const end = currentTime + n / sampleRate;
     const q = this.q.list;
-    while (q.length && q[0].time < end) this.send(q.shift().m);
+    while (q.length && q[0].time < end) this.apply(q.shift());
     let l, r;
     try {
       [l, r] = this.e.render(n);

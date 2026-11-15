@@ -70,6 +70,12 @@ export function debounce(fn, ms) {
   return d;
 }
 
+/** A clip's length a step longer (dir 1) or shorter (-1): whole beats up to a bar, whole bars above; never under a beat */
+export function lengthStep(L, dir) {
+  if (dir > 0) return L >= 4 ? Math.floor(L / 4 + 1e-6) * 4 + 4 : Math.floor(L + 1e-6) + 1;
+  return L > 4 ? Math.max(4, Math.ceil(L / 4 - 1e-6) * 4 - 4) : Math.max(1, Math.ceil(L - 1e-6) - 1);
+}
+
 export const deepCopy = (o) => (typeof structuredClone === "function" ? structuredClone(o) : JSON.parse(JSON.stringify(o)));
 
 /** Points [{t, v}] sorted by t: the linear value at t (holds the ends) */

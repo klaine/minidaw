@@ -4,6 +4,15 @@ import { Emitter, deepCopy } from "./util.js";
 
 const UNDO_LIMIT = 120;
 
+/** Are two states of a project the same, but for when they were touched? */
+function sameProject(a, b) {
+  const ua = a.updatedAt, ub = b.updatedAt;
+  a.updatedAt = b.updatedAt = 0;
+  const same = JSON.stringify(a) === JSON.stringify(b);
+  a.updatedAt = ua; b.updatedAt = ub;
+  return same;
+}
+
 export class Store extends Emitter {
   constructor(project) {
     super();
@@ -61,7 +70,8 @@ export class Store extends Emitter {
     return r;
   }
   commit(reason = "edit") {
-    if (this.pending && !this.locked) this.pushUndo(this.pending);
+    // a gesture that changed nothing (a drag that hit no note, a tap on a control) is not an undo step
+    if (this.pending && !this.locked && !sameProject(this.pending, this.project)) this.pushUndo(this.pending);
     this.pending = null;
     this.gesture = false;
     this.touch(reason);

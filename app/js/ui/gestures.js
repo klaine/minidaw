@@ -1,12 +1,14 @@
 // Pointer gestures for touch and mouse alike: tap, double tap, long press (the iPad's right click), one-finger drag,
 // and two-finger pinch / pan. Handlers get positions in the element's own CSS pixels.
 //
-//   gestures(el, { tap(p, e), doubleTap(p, e), longPress(p, e), dragStart(p, e) -> bool, dragMove(p, d, e), dragEnd(p, e),
+//   gestures(el, { tap(p, e), doubleTap(p, e), longPress(p, e), dragStart(p, e) -> bool, dragMove(p, d, e),
+//                  dragEnd(p, e, cancelled),
 //                  pinch({scale, cx, cy, dx, dy}), pinchEnd(), wheel(e) })
 // dragStart returning false lets the gesture fall through (e.g. a drag on empty space). A drag starts after a few
 // pixels of movement; the long press fires if the finger stays still for LONG_MS.
 
-const MOVE_PX = 6;
+// how far a press may wander and still be a tap: a fingertip rolls as it lands, a mouse doesn't
+const MOVE_PX = 6, MOVE_TOUCH_PX = 11;
 const LONG_MS = 480;
 const DOUBLE_MS = 320;
 
@@ -26,7 +28,10 @@ export function gestures(el, h) {
       return;
     }
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    // a button, a menu or a field inside the element is its own: capturing the pointer here would take its click away
+    const ctl = e.target && e.target.closest ? e.target.closest("button, select, input, textarea, a") : null;
+    if (ctl && ctl !== el && el.contains(ctl)) return;
+    try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch (_) { /* a pointer that's already gone */ }
     const p = pos(e);
     pointers.set(e.pointerId, { start: p, last: p });
     if (pointers.size === 2 && h.pinch) {
@@ -70,7 +75,7 @@ export function gestures(el, h) {
     }
     if (!drag || drag.id !== e.pointerId) return;
     if (!drag.started) {
-      if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < MOVE_PX) return;
+      if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < (e.pointerType === "touch" ? MOVE_TOUCH_PX : MOVE_PX)) return;
       clearTimeout(longTimer);
       drag.started = true;
       drag.accepted = h.dragStart ? h.dragStart(drag.start, e) !== false : false;
@@ -94,8 +99,11 @@ export function gestures(el, h) {
     const d = drag;
     drag = null;
     const p = ptr ? ptr.last : d.last;
-    if (d.started) { if (d.accepted && h.dragEnd) h.dragEnd(p, e); return; }
-    if (suppressTap || e.type === "pointercancel") return;
+    const cancelled = e.type === "pointercancel";
+    if (d.started && d.accepted) { if (h.dragEnd) h.dragEnd(p, e, cancelled); return; } // cancelled: the system took the touch
+    // a drag nothing took (a finger that slid a little on something that only taps) is still a tap, if it stayed near
+    if (d.started && Math.hypot(p.x - d.start.x, p.y - d.start.y) > 24) return;
+    if (suppressTap || cancelled) return;
     const now = performance.now();
     if (h.doubleTap && now - lastTap.t < DOUBLE_MS && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 24) {
       lastTap.t = 0;

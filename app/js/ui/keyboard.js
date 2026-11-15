@@ -7,7 +7,7 @@
 import { h, isBlack, noteName } from "../util.js";
 import { segmented, select } from "./controls.js";
 import { DRUM_BASE_NOTE } from "../model.js";
-import { SCALES, NOTE_LETTERS, keyOf, inScale, isRoot, padGrid, chords, noteLabel } from "../scales.js";
+import { SCALES, NOTE_LETTERS, keyOf, inScale, isRoot, rootFrom, padGrid, chords, noteLabel } from "../scales.js";
 
 const LAYOUTS = [{ value: "piano", label: "Piano" }, { value: "pads", label: "Pads" }, { value: "chords", label: "Chords" }];
 const stored = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } };
@@ -73,7 +73,7 @@ export class KeysView {
     const low = this.layout === "piano" ? 12 * (this.octave + 2) : 12 * (this.octave + 1);
     const bar = h("div", { class: "keys-bar" }, layout,
       h("span", { class: "keys-group" }, h("span", { class: "dim" }, "Key"), keySel, scaleSel),
-      h("span", { class: "keys-group" }, btn("Oct −", () => this.setOct(this.octave - 1), "An octave lower"), h("span", { class: "keys-oct" }, noteLabel(low)), btn("Oct +", () => this.setOct(this.octave + 1), "An octave higher")),
+      h("span", { class: "keys-group" }, btn("Oct −", () => this.setOct(this.octave - 1), "An octave lower"), h("span", { class: "keys-oct", title: "The lowest note" }, noteLabel(this.layout === "piano" ? low : rootFrom(low, key.root))), btn("Oct +", () => this.setOct(this.octave + 1), "An octave higher")),
       this.layout === "piano" ? btn(this.span === 2 ? "3 octaves" : this.span === 3 ? "1 octave" : "2 octaves", () => { this.span = this.span === 2 ? 3 : this.span === 3 ? 1 : 2; store("minidaw.span", this.span); this.render(); }, "How many octaves the keyboard shows") : null,
       btn("All off", () => this.allOff(), "All notes off"),
       info);
@@ -83,8 +83,8 @@ export class KeysView {
       const grid = padGrid({ root: key.root, steps: key.scale.steps, low, cols: 8, rows: this.rows });
       surface = h("div", { class: "npads", style: { "--tc": t.color, gridTemplateRows: `repeat(${this.rows}, 1fr)` } });
       for (let r = grid.length - 1; r >= 0; r--) for (const p of grid[r]) {
-        const el = h("div", { class: "npad" + (p.root ? " root" : "") }, noteLabel(p.note));
-        el.dataset.note = p.note;
+        const el = h("div", { class: "npad" + (p.root ? " root" : "") + (p.note > 127 ? " out" : "") }, p.note > 127 ? "" : noteLabel(p.note));
+        if (p.note <= 127) el.dataset.note = p.note; // MIDI ends at 127: the pads above it are blank
         surface.append(el);
       }
       this.wire(surface, ".npad", { slide: true });
@@ -98,7 +98,7 @@ export class KeysView {
       }
       this.wire(surface, ".chord", { slide: false });
     } else {
-      const lo = low, hi = lo + 12 * this.span + 1;
+      const lo = low, hi = Math.min(128, lo + 12 * this.span + 1); // MIDI ends at 127
       surface = h("div", { class: "piano" });
       const marked = key.scale.steps.length < 12;
       const whites = [];
@@ -144,7 +144,9 @@ export class KeysView {
       const r = k.getBoundingClientRect();
       const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
       const vel = loudAt === "top" ? Math.round(60 + 67 * (1 - y)) : Math.round(40 + 87 * y);
-      return { el: k, notes: (k.dataset.notes || k.dataset.note).split(",").map(Number), vel };
+      const list = k.dataset.notes || k.dataset.note;
+      if (!list) return null;
+      return { el: k, notes: list.split(",").map(Number).filter((n) => n >= 0 && n <= 127), vel };
     };
     const held = (el) => [...this.down.values()].some((d) => d.el === el);
     const press = (id, n) => {
@@ -160,6 +162,7 @@ export class KeysView {
       const still = new Set([...this.down.values()].flatMap((x) => x.notes));
       for (const note of d.notes) if (!still.has(note)) app.liveNote(false, note, 0);
       if (!held(d.el)) d.el.classList.remove("on");
+      if (!this.down.size && this.stale) { this.stale = false; this.render(); }
     };
     root.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -186,6 +189,10 @@ export class KeysView {
     for (const k of this.el.querySelectorAll(`[data-note="${note}"]`)) k.classList.toggle("on", on);
   }
 
-  update(c) { if (c && (c.reason === "tracks" || c.reason === "mixer" || c.reason === "pad" || c.reason === "key" || c.reason === "undo" || c.reason === "redo" || c.reason === "project")) this.render(); }
+  update(c) {
+    if (!c || !["tracks", "mixer", "pad", "key", "undo", "project"].includes(c.reason)) return;
+    // not under fingers that hold notes (another hand on the mixer would cut them off): once they've let go
+    if (this.down.size) this.stale = true; else this.render();
+  }
   dispose() { this.releaseAll(); if (this.ro) this.ro.disconnect(); }
 }

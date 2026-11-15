@@ -32,6 +32,7 @@ export class DeviceView {
     const inst = this.app.engine.instrument(t.id);
     if (t.type === "audio" && c.reason === "mixer" && !c.live) { this.render(); return; }
     if (inst !== this.inst || (c.reason && ["tracks", "undo", "project"].includes(c.reason))) { this.render(); return; }
+    if (this.channel && (c.reason === "mixer" || c.reason === "live-mixer")) this.channel.sync(); // the mixer's faders moved it
     if (this.drum && !c.live) this.drum.refresh();
   }
 
@@ -46,7 +47,8 @@ export class DeviceView {
     if (t.type === "audio") main.append(this.audioDevice(t));
     else if (t.instrument.kind === "drumrack") { this.drum = new DrumDevice(app, t, this.inst); main.append(this.drum.el); }
     else main.append(this.synthDevice(t));
-    this.el.append(main, channelBox(app, t));
+    this.channel = channelBox(app, t);
+    this.el.append(main, this.channel);
   }
 
   synthDevice(t) {
@@ -65,7 +67,11 @@ export class DeviceView {
     const pick = async (i) => {
       await inst.loadPreset(i);
       const name = meta.presets[i] ? meta.presets[i].name : "";
-      store.update((p) => { const x = p.tracks.find((q) => q.id === t.id); x.instrument.preset = i; x.instrument.presetName = name; x.instrument.state = null; }, "preset");
+      // not an undo step: a sound chosen on the instrument is the instrument's, as its knobs are (Undo couldn't put the
+      // engine back, and would only say it had)
+      store.live((p) => { const x = p.tracks.find((q) => q.id === t.id); x.instrument.preset = i; x.instrument.presetName = name; x.instrument.state = null; }, "preset");
+      store.pending = null;
+      app.saveSoon();
       presetName.textContent = name;
       this.refreshKnobs();
     };
@@ -91,7 +97,7 @@ export class DeviceView {
         onChange: (v) => { inst.setNorm(key, v); store.ui.dirty = true; app.topbar.update(); },
       });
       if (automated()) k.classList.add("automated");
-      gestures(k, { longPress: (pos, e) => menu({ x: e.clientX, y: e.clientY }, [
+      gestures(k, { longPress: (pos, e) => !k.turning() && menu({ x: e.clientX, y: e.clientY }, [ // a slow turn is not a long press
         { label: "Show its automation lane", onClick: () => { store.update((p) => { const x = p.tracks.find((q) => q.id === t.id); if (!x.lanes.includes(laneKey)) x.lanes.push(laneKey); }, "tracks"); app.setView("arrange"); } },
         { label: "Write it into the selected clip's envelope", disabled: !store.selectedClip, onClick: () => store.select({ panel: "clip", envKey: laneKey }) },
       ], { title: p.name }) });
@@ -171,24 +177,30 @@ function fmtParam(p, v) {
   return (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(2)) + (p.unit ? " " + p.unit : "");
 }
 
-/** Volume, pan, sends, EQ and compressor of a track, compact */
+/** Volume, pan, sends, EQ and compressor of a track, compact. el.sync(): its controls set from the project again. */
 export function channelBox(app, t) {
   const store = app.store;
+  const cur = () => (store.track(t.id) || t).mixer;
   const set = (k, v, live) => (live ? store.live : store.update).call(store, (p) => { p.tracks.find((x) => x.id === t.id).mixer[k] = v; }, live ? "live-mixer" : "mixer");
   const setEq = (band, v, live) => (live ? store.live : store.update).call(store, (p) => { p.tracks.find((x) => x.id === t.id).mixer.eq[band] = Math.round((v * 30 - 15) * 10) / 10; }, live ? "live-mixer" : "mixer");
-  const m = t.mixer;
-  const k = (label, value, def, fn, o = {}) => knob({ label, value, def, small: true, size: 38, onInput: (v) => fn(v, true), onChange: (v) => fn(v, false), ...o });
-  return h("div", { class: "dev-channel" },
+  const syncs = [];
+  const k = (label, read, def, fn, o = {}) => { const el = knob({ label, value: read(cur()), def, small: true, size: 38, onInput: (v) => fn(v, true), onChange: (v) => fn(v, false), ...o }); syncs.push(() => el.set(read(cur()))); return el; };
+  const eqFmt = { bipolar: true, format: (v) => (v * 30 - 15).toFixed(1) };
+  const comp = toggle("Comp", cur().comp, () => set("comp", !cur().comp), "small");
+  syncs.push(() => comp.setOn(cur().comp));
+  const el = h("div", { class: "dev-channel" },
     h("div", { class: "dev-ch-title" }, "Channel"),
     h("div", { class: "dev-ch-knobs" },
-      k("Volume", m.vol, UNITY, (v, l) => set("vol", v, l), { format: fmtDb }),
-      k("Pan", (m.pan + 1) / 2, 0.5, (v, l) => set("pan", Math.round((v * 2 - 1) * 100) / 100, l), { bipolar: true, format: (v) => { const x = Math.round((v * 2 - 1) * 50); return x === 0 ? "C" : x < 0 ? -x + "L" : x + "R"; } }),
-      k("Send A", m.sendA, 0, (v, l) => set("sendA", v, l), { color: "#5ac8fa", format: (v) => Math.round(v * 100) + "%" }),
-      k("Send B", m.sendB, 0, (v, l) => set("sendB", v, l), { color: "#bf8cff", format: (v) => Math.round(v * 100) + "%" }),
-      k("Low", (m.eq.low + 15) / 30, 0.5, (v, l) => setEq("low", v, l), { bipolar: true, format: (v) => (v * 30 - 15).toFixed(1) }),
-      k("Mid", (m.eq.mid + 15) / 30, 0.5, (v, l) => setEq("mid", v, l), { bipolar: true, format: (v) => (v * 30 - 15).toFixed(1) }),
-      k("High", (m.eq.high + 15) / 30, 0.5, (v, l) => setEq("high", v, l), { bipolar: true, format: (v) => (v * 30 - 15).toFixed(1) }),
-      toggle("Comp", m.comp, () => set("comp", !m.comp), "small")));
+      k("Volume", (m) => m.vol, UNITY, (v, l) => set("vol", v, l), { format: fmtDb }),
+      k("Pan", (m) => (m.pan + 1) / 2, 0.5, (v, l) => set("pan", Math.round((v * 2 - 1) * 100) / 100, l), { bipolar: true, format: (v) => { const x = Math.round((v * 2 - 1) * 50); return x === 0 ? "C" : x < 0 ? -x + "L" : x + "R"; } }),
+      k("Send A", (m) => m.sendA, 0, (v, l) => set("sendA", v, l), { color: "#5ac8fa", format: (v) => Math.round(v * 100) + "%" }),
+      k("Send B", (m) => m.sendB, 0, (v, l) => set("sendB", v, l), { color: "#bf8cff", format: (v) => Math.round(v * 100) + "%" }),
+      k("Low", (m) => (m.eq.low + 15) / 30, 0.5, (v, l) => setEq("low", v, l), eqFmt),
+      k("Mid", (m) => (m.eq.mid + 15) / 30, 0.5, (v, l) => setEq("mid", v, l), eqFmt),
+      k("High", (m) => (m.eq.high + 15) / 30, 0.5, (v, l) => setEq("high", v, l), eqFmt),
+      comp));
+  el.sync = () => { for (const f of syncs) f(); };
+  return el;
 }
 
 // ---- the Drum Rack ----

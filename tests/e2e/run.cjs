@@ -66,6 +66,15 @@ class User {
     await m.up();
   }
   async box(locator) { await locator.waitFor({ state: "visible" }); return locator.boundingBox(); }
+  /** A finger's swipe: real touch events, so the browser may take it for a scroll (as on an iPad) */
+  async swipe(x0, y0, x1, y1, steps = 10) {
+    const cdp = this.cdp || (this.cdp = await this.page.context().newCDPSession(this.page));
+    const pt = (x, y) => [{ x: Math.round(x), y: Math.round(y), id: 1 }];
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pt(x0, y0) });
+    for (let i = 1; i <= steps; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pt(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps) }); await this.page.waitForTimeout(16); }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await this.page.waitForTimeout(120);
+  }
   /** A tab: the views (Arrange, Session, Mixer) or the panel's (Device, Clip, Keys) */
   async tab(name) { await this.page.locator(".seg-btn", { hasText: new RegExp("^" + name + "$") }).first().tap(); }
   /** A button in the open sheet's footer (Done, Import, Export, OK) */
@@ -674,6 +683,8 @@ const FLOWS = {
     await u.tap("⤢ Bigger");
     const h1 = (await u.box(u.page.locator(".panel"))).height, rows1 = await rowsSeen();
     assert.ok(h1 > IPAD.height * 0.55 && rows1 >= rows0 + 5, `a taller panel shows more rows (${rows0} -> ${rows1}, ${Math.round(h0)} -> ${Math.round(h1)} px)`);
+    const tallBox = await u.box(u.page.locator(".panel"));
+    assert.ok(tallBox.y + tallBox.height <= IPAD.height + 0.5, "all of it on the screen: its bottom at " + (tallBox.y + tallBox.height));
     assert.ok(await u.header("Drums").isVisible(), "the arrangement's first track is still in sight");
     await u.tap("⤡ Smaller");
     assert.ok(near((await u.box(u.page.locator(".panel"))).height, h0, 3), "and back to the size it had");
@@ -685,6 +696,15 @@ const FLOWS = {
     await u.page.locator(".pr-canvas").waitFor();
     const crest = await u.track("Crest");
     assert.ok(crest.slots[0] && !crest.slots[1], "a clip in Crest's first slot");
+    // turned to portrait and made bigger, then turned back: the panel never takes more than the screen has
+    await u.page.setViewportSize({ width: 820, height: 1180 });
+    await u.tap("⤢ Bigger");
+    let pb = await u.box(u.page.locator(".panel"));
+    assert.ok(pb.height > 700 && pb.y + pb.height <= 1180.5, `portrait: a tall panel that ends on the screen (${Math.round(pb.height)} px, bottom ${pb.y + pb.height})`);
+    await u.page.setViewportSize(IPAD);
+    await u.page.waitForTimeout(300);
+    pb = await u.box(u.page.locator(".panel"));
+    assert.ok(pb.y + pb.height <= IPAD.height + 0.5 && pb.y > 150, `back in landscape it fits again (top ${pb.y}, bottom ${pb.y + pb.height})`);
   },
 
   async "MIDI: a keyboard plays the track, a Launchpad Pro Mk3 runs the session (stand-in devices)"(u) {
@@ -749,6 +769,80 @@ const FLOWS = {
     await midi("unplug", "LPProMK3");
     await u.page.locator(".toast", { hasText: "MIDI: Launchpad Pro Mk3 disconnected" }).waitFor();
     assert.strictEqual(await u.state(() => window.minidaw.midi.launchpad.connected), false, "the grid is let go");
+  },
+
+  async "fingers: the steps scroll and paint, the session redraws, a smaller iPad's top bar"(u) {
+    await u.boot();
+    // the step sequencer: a swipe up scrolls its rows and changes nothing; along a row it paints
+    const beat = await u.lanePoint("Drums", 1);
+    await u.tapAt(beat.x, beat.y);
+    await u.step("Kick", 1).waitFor();
+    const notes = () => u.state(() => window.minidaw.store.selectedClip.notes.length);
+    const undoable = () => u.state(() => window.minidaw.store.undoStack.length);
+    const n0 = await notes(), u0 = await undoable();
+    const cell = await u.box(u.step("Clap", 7));
+    await u.swipe(cell.x + cell.width / 2, cell.y + cell.height / 2, cell.x + cell.width / 2, cell.y - 150);
+    const scrolled = await u.state(() => document.querySelector(".st-scroll").scrollTop);
+    assert.ok(scrolled > 60, "a finger's swipe scrolls the rows (" + scrolled + " px)");
+    assert.deepStrictEqual([await notes(), await undoable()], [n0, u0], "and it set no step and made no undo step");
+    await u.state(() => { document.querySelector(".st-scroll").scrollTop = 0; });
+    const a = await u.box(u.step("Snare", 2)), b = await u.box(u.step("Snare", 4));
+    await u.swipe(a.x + a.width / 2, a.y + a.height / 2, b.x + b.width / 2, b.y + b.height / 2);
+    assert.strictEqual(await notes(), n0 + 3, "a swipe along a row paints its steps");
+    assert.strictEqual(await undoable(), u0 + 1, "as one undo step");
+    // a tap that rolls a little (9 px) is still a tap
+    const k = await u.box(u.step("Kick", 3));
+    await u.swipe(k.x + k.width / 2 - 4, k.y + k.height / 2, k.x + k.width / 2 + 5, k.y + k.height / 2, 3);
+    assert.strictEqual(await notes(), n0 + 4, "a fingertip that rolls as it lands still sets the step");
+    // the session shows its own edits at once
+    await u.tab("Session");
+    const col = await u.state(() => window.minidaw.store.project.tracks.findIndex((t) => t.name === "Bass"));
+    const empty = u.page.locator(`.ses-slot[data-scene="0"]`).nth(col);
+    const eb = await u.box(empty);
+    await u.doubleTapAt(eb.x + 30, eb.y + eb.height / 2);
+    await u.page.locator(".pr-canvas").waitFor();
+    assert.ok(await u.page.locator(`.ses-slot.clip[data-scene="0"]`).nth(col).isVisible().catch(() => false) || (await u.page.locator(`.ses-slot[data-scene="0"]`).nth(col).getAttribute("class")).includes("clip"), "the new clip is in its slot on the screen");
+    const rows0 = await u.page.locator(".ses-scene").count();
+    await u.tap("+ Scene");
+    assert.strictEqual(await u.page.locator(".ses-scene").count(), rows0 + 1, "+ Scene adds a row");
+    // a clip deleted while it plays: gone from the grid, and silent
+    const arp = u.page.locator(".ses-slot.clip", { hasText: "Arp" }).first();
+    await arp.tap();
+    assert.ok(db(await u.level("Pluck", 1500)) > -45, "the arp plays");
+    const ab = await u.box(arp);
+    await u.longPressAt(ab.x + 40, ab.y + ab.height / 2);
+    await u.menuItem("Delete");
+    await u.page.waitForTimeout(2600);
+    const after = await u.state(() => { const a = window.minidaw, t = a.store.project.tracks.find((x) => x.name === "Pluck"), s = a.transport.session.get(t.id); return { playing: s && s.playing, queued: s && s.queued, follow: s && s.follow, slots: t.slots.filter(Boolean).length, tr: a.transport.playing }; });
+    assert.ok((await u.level("Pluck", 600)) < 0.01, "deleted while playing: it stops " + JSON.stringify(after));
+    // a mixer fader: a double tap resets it (a tap changes nothing and makes no undo step)
+    await u.tab("Mixer");
+    const strip = u.page.locator(".strip", { has: u.page.locator(".strip-name", { hasText: /^Lead$/ }) });
+    const slot = await u.box(strip.locator(".fader-slot"));
+    const u1 = await undoable();
+    await u.tapAt(slot.x + slot.width / 2, slot.y + slot.height / 2);
+    assert.strictEqual(await undoable(), u1, "a tap on a fader is not an undo step");
+    await u.doubleTapAt(slot.x + slot.width / 2, slot.y + slot.height / 2);
+    await u.until(() => Math.abs(window.minidaw.store.project.tracks.find((t) => t.name === "Lead").mixer.vol - Math.SQRT1_2) < 1e-6, "the double tap to reset the fader to 0 dB");
+    // deleting the selected track: the panel goes to its neighbour, not to "add a track"
+    await u.tab("Arrange");
+    await u.header("Lead").locator(".th-name").tap();
+    const hb = await u.box(u.header("Lead"));
+    await u.longPressAt(hb.x + 60, hb.y + 14);
+    await u.menuItem("Delete track");
+    await u.until(() => !window.minidaw.store.project.tracks.some((t) => t.name === "Lead"), "the track to go");
+    assert.ok(await u.page.locator(".th.sel").count() === 1 && !(await u.page.locator(".panel-body").textContent()).includes("Add a track"), "a neighbour is selected and shown");
+    // a 1024-wide iPad with a session clip playing: every tab is whole and takes a tap
+    await u.page.setViewportSize({ width: 1024, height: 768 });
+    await u.tab("Session");
+    await u.page.locator(".ses-slot.clip").first().tap();
+    await u.page.locator(".tb-back").waitFor();
+    for (const name of ["Arrange", "Session", "Mixer"]) {
+      const tb = await u.box(u.page.locator(".tb-views .seg-btn", { hasText: new RegExp("^" + name + "$") }));
+      assert.ok(tb.x >= 0 && tb.x + tb.width <= 1024 && tb.width >= 44, `${name} is whole on a 1024-wide screen (${Math.round(tb.x)}..${Math.round(tb.x + tb.width)})`);
+    }
+    await u.tab("Mixer");
+    assert.strictEqual(await u.state(() => window.minidaw.store.ui.view), "mixer", "and Mixer opens");
   },
 
   async "session: launch a scene, stop a track, back to the arrangement"(u) {

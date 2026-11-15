@@ -1,0 +1,870 @@
+{
+    "title": "Amino",
+    "children": [
+        {
+            "title": "Overview",
+            "lines": [
+                "Amino is a 4-layer",
+                "8-bit wavetable",
+                "synth.",
+                "2 osc, 3 envelopes,",
+                "2 LFOs, 8 mod slots",
+                "and 2 FX slots.",
+                "",
+                "Jog turns pages.",
+                "Shift+jog opens the",
+                "section picker.",
+                "Back leaves Amino."
+            ]
+        },
+        {
+            "title": "Pages",
+            "children": [
+                {
+                    "title": "Main",
+                    "lines": [
+                        "1 Cut    2 Res",
+                        "3 Wave1  4 Wave2",
+                        "5 F.Env  6 Atk",
+                        "7 Rel    8 Flavour",
+                        "",
+                        "Fast sound page.",
+                        "Cut/Res draw the",
+                        "filter curve.",
+                        "Atk/Rel are the",
+                        "amp envelope."
+                    ]
+                },
+                {
+                    "title": "Osc 1",
+                    "lines": [
+                        "1 Table  2 Wave",
+                        "3 Semi   4 Fine",
+                        "5 Level  6 WEnv",
+                        "7 Vel    8 Kbd",
+                        "",
+                        "Table picks one of",
+                        "74 wavetables.",
+                        "Wave is the 0-63",
+                        "position in it.",
+                        "WEnv is wave env"
+                    ]
+                },
+                {
+                    "title": "Osc 2",
+                    "lines": [
+                        "1 Table  2 Wave",
+                        "3 Semi   4 Fine",
+                        "5 Level  6 Link",
+                        "7 XMode  8 XMod",
+                        "",
+                        "Link makes Osc 2",
+                        "follow Osc 1 table.",
+                        "XMode: Off, PM, AM",
+                        "or Sync from Osc 2."
+                    ]
+                },
+                {
+                    "title": "Wave Env",
+                    "lines": [
+                        "1 Atk  2 Dec",
+                        "3 Sus  4 Rel",
+                        "5 O1Wav 6 O1Env",
+                        "7 O2Wav 8 O2Env",
+                        "",
+                        "Env 1 sweeps both",
+                        "wave positions.",
+                        "Hold a note and",
+                        "turn the bottom row."
+                    ]
+                },
+                {
+                    "title": "Mixer",
+                    "lines": [
+                        "1 O1Lvl 2 O2Lvl",
+                        "3 Dirt  4 Amt",
+                        "5 Type  6 Drive",
+                        "7 Pos   8 Vol",
+                        "",
+                        "Dirt: Stat Crkl",
+                        "Geig Clik Brst Ring.",
+                        "Drive types: Off",
+                        "Trans Tube Diode",
+                        "Fold."
+                    ]
+                },
+                {
+                    "title": "Filter",
+                    "lines": [
+                        "1 Cut  2 Res",
+                        "3 Env  4 Type",
+                        "5 Atk  6 Dec",
+                        "7 Sus  8 Rel",
+                        "",
+                        "Filter types: LP24",
+                        "LP12 Ladder 24dB",
+                        "HP24 HP12 BP12 Off.",
+                        "Ladder: stage sat.",
+                        "Env is filter env"
+                    ]
+                },
+                {
+                    "title": "Amp",
+                    "lines": [
+                        "1 Atk  2 Dec",
+                        "3 Sus  4 Rel",
+                        "5 Vol  6 Vel",
+                        "7 PanM 8 Pan",
+                        "",
+                        "Amp envelope 3.",
+                        "Pan modes: Fixed",
+                        "Random, Alt, Spread,",
+                        "LFO1 and LFO2."
+                    ]
+                },
+                {
+                    "title": "Play",
+                    "lines": [
+                        "1 VW1  2 VW2",
+                        "3 VFlt 4 VAmp",
+                        "5 FKbd 6 ATWav",
+                        "7 ATCut 8 ATVib",
+                        "",
+                        "Velocity and",
+                        "aftertouch routes.",
+                        "ATWav sweeps both",
+                        "wave positions."
+                    ]
+                },
+                {
+                    "title": "Voice",
+                    "lines": [
+                        "1 Oct  2 Poly",
+                        "3 Glide 4 Flav",
+                        "5 Scale 6 Chord",
+                        "7 Char  8 Send",
+                        "",
+                        "Poly: Poly Mono",
+                        "Legato.",
+                        "Char is the clean",
+                        "or vintage osc mode."
+                    ]
+                },
+                {
+                    "title": "Pad Matrix",
+                    "lines": [
+                        "Each column is a",
+                        "modulation slot.",
+                        "Rows: Source, Via,",
+                        "Target, Via Depth.",
+                        "Knob sets Amount",
+                        "and shows its slot",
+                        "as a bar.",
+                        "Jog edits choices.",
+                        "Hold a pad for",
+                        "source details.",
+                        "LEDs show signed",
+                        "depth and amount."
+                    ]
+                },
+                {
+                    "title": "Mod 1-8",
+                    "lines": [
+                        "Mod 1-2 to Mod 7-8",
+                        "each hold two slots:",
+                        "1 Src1 2 Dst1",
+                        "3 Amt1 4 Via1",
+                        "5 Src2 6 Dst2",
+                        "7 Amt2 8 Via2",
+                        "",
+                        "Amt is bipolar.",
+                        "Via is a source",
+                        "scaler. Depth 0%",
+                        "ignores it; 100%",
+                        "uses full scale."
+                    ]
+                },
+                {
+                    "title": "FX",
+                    "lines": [
+                        "1 Type1 2 Mix1",
+                        "3 Type2 4 Mix2",
+                        "5 Chain 6 Rte1",
+                        "7 Snd1  8 Vol",
+                        "",
+                        "Chain is Parallel",
+                        "or Serial.",
+                        "FX 1 / FX 2 pages",
+                        "follow each Type."
+                    ]
+                },
+                {
+                    "title": "Layers",
+                    "lines": [
+                        "1 Lyrs 2 Mode",
+                        "3 Edit 4 Voice",
+                        "5 Vol  6 Bend",
+                        "7 MPE  8 Flav",
+                        "",
+                        "Modes: Stack,",
+                        "RoundRobin, Random,",
+                        "Split, Channel.",
+                        "Edit picks L1-L4."
+                    ]
+                },
+                {
+                    "title": "Tools",
+                    "lines": [
+                        "1 Init 2 Rnd",
+                        "3 Rand",
+                        "LoadLyr opens list.",
+                        "",
+                        "Init resets the",
+                        "focused layer.",
+                        "Rnd randomises it;",
+                        "Rand sets depth.",
+                        "LoadLyr loads a",
+                        "layer from a preset."
+                    ]
+                },
+                {
+                    "title": "Presets",
+                    "lines": [
+                        "Click in, then jog",
+                        "to audition each",
+                        "preset of the",
+                        "chosen Category."
+                    ]
+                },
+                {
+                    "title": "Category",
+                    "lines": [
+                        "Pick a category;",
+                        "Presets then jogs",
+                        "only through it.",
+                        "All lists every one."
+                    ]
+                },
+                {
+                    "title": "Mod 1-2",
+                    "lines": [
+                        "1 Src1  2 Dst1",
+                        "3 Amt1  4 Via1",
+                        "",
+                        "5 Src2  6 Dst2",
+                        "7 Amt2  8 Via2",
+                        "",
+                        "Edits the focused",
+                        "layer."
+                    ]
+                },
+                {
+                    "title": "Mod 3-4",
+                    "lines": [
+                        "1 Src3  2 Dst3",
+                        "3 Amt3  4 Via3",
+                        "",
+                        "5 Src4  6 Dst4",
+                        "7 Amt4  8 Via4",
+                        "",
+                        "Edits the focused",
+                        "layer."
+                    ]
+                },
+                {
+                    "title": "Mod 5-6",
+                    "lines": [
+                        "1 Src5  2 Dst5",
+                        "3 Amt5  4 Via5",
+                        "",
+                        "5 Src6  6 Dst6",
+                        "7 Amt6  8 Via6",
+                        "",
+                        "Edits the focused",
+                        "layer."
+                    ]
+                },
+                {
+                    "title": "Mod 7-8",
+                    "lines": [
+                        "1 Src7  2 Dst7",
+                        "3 Amt7  4 Via7",
+                        "",
+                        "5 Src8  6 Dst8",
+                        "7 Amt8  8 Via8",
+                        "",
+                        "Edits the focused",
+                        "layer."
+                    ]
+                },
+                {
+                    "title": "Layer Mix",
+                    "lines": [
+                        "1 Vol1  2 Vol2",
+                        "3 Vol3  4 Vol4",
+                        "",
+                        "5 On1  6 On2",
+                        "7 On3  8 On4"
+                    ]
+                },
+                {
+                    "title": "Layer Route",
+                    "lines": [
+                        "1 Rte1  2 Rte2",
+                        "3 Rte3  4 Rte4",
+                        "",
+                        "5 Snd1  6 Snd2",
+                        "7 Snd3  8 Snd4"
+                    ]
+                },
+                {
+                    "title": "Key Split",
+                    "lines": [
+                        "1 Lo1  2 Hi1",
+                        "3 Lo2  4 Hi2",
+                        "",
+                        "5 Lo3  6 Hi3",
+                        "7 Lo4  8 Hi4"
+                    ]
+                },
+                {
+                    "title": "Load Layer",
+                    "lines": [
+                        "Choose a factory",
+                        "preset and layer.",
+                        "It loads into the",
+                        "focused layer."
+                    ]
+                },
+                {
+                    "title": "Layer Tools",
+                    "lines": [
+                        "1 On",
+                        "",
+                        "Edits the focused",
+                        "layer."
+                    ]
+                },
+                {
+                    "title": "Aux Env",
+                    "lines": [
+                        "1 Atk  2 Dec",
+                        "3 Sus  4 Rel",
+                        "",
+                        "5 Dst1  6 Amt1",
+                        "7 Dst2  8 Amt2",
+                        "",
+                        "Two fixed routes:",
+                        "pick a target with",
+                        "Dst, set depth with",
+                        "Amt (+/-). Aux Env",
+                        "is also a matrix",
+                        "source."
+                    ]
+                },
+                {
+                    "title": "LFO 1",
+                    "lines": [
+                        "1 Shape  2 Rate",
+                        "3 Div  4 Sync",
+                        "",
+                        "5 Phase  6 Fade",
+                        "7 MW  8 Pitch",
+                        "",
+                        "Sync Off uses Rate",
+                        "in Hz; Sync On uses",
+                        "the musical Div.",
+                        "MW links LFO to",
+                        "the mod wheel.",
+                        "Pitch is vibrato:",
+                        "100% = 12 semis."
+                    ]
+                },
+                {
+                    "title": "LFO 2",
+                    "lines": [
+                        "1 Shape  2 Rate",
+                        "3 Div  4 Sync",
+                        "",
+                        "5 Phase  6 Fade",
+                        "7 MW  8 Pitch",
+                        "",
+                        "Same layout as",
+                        "LFO 1.",
+                        "Phase can be Free,",
+                        "Voice or Global.",
+                        "Pitch is vibrato:",
+                        "100% = 12 semis."
+                    ]
+                },
+                {
+                    "title": "FX 1 Off",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "",
+                        "Pick a Type and",
+                        "this page becomes",
+                        "that effect's page",
+                        "with named knobs."
+                    ]
+                },
+                {
+                    "title": "FX 1 Chorus",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Delay  6 Fdbk",
+                        "7 Sprd  8 Mode",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Flanger",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Fdbk  6 Delay",
+                        "7 Sprd  8 Sync",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Phaser",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Fdbk  6 Stage",
+                        "7 Centr  8 Sprd",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Tremolo",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Shape  6 Sync",
+                        "7 Ster  8 Phase",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Drive",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Gain  4 Tone",
+                        "",
+                        "5 Curve  6 Out",
+                        "7 LoCut  8 Crush",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Comp",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Thr  4 Ratio",
+                        "",
+                        "5 Atk  6 Rel",
+                        "7 Make  8 Knee",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 EQ",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Low  4 Mid",
+                        "",
+                        "5 MidF  6 High",
+                        "7 Q  8 LoCut",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Delay",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Time  4 Sync",
+                        "",
+                        "5 Fdbk  6 Tone",
+                        "7 PingP  8 Mod",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Reverb",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Size  4 Decay",
+                        "",
+                        "5 Damp  6 PreD",
+                        "7 Mod  8 Width",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Shimmer",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Size  4 Decay",
+                        "",
+                        "5 Damp  6 Shim",
+                        "7 Intvl  8 Mod",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 1 Trance Gate",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Patt  4 Grid",
+                        "",
+                        "5 Atk  6 Rel",
+                        "7 Len  8 Floor",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Off",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "",
+                        "Pick a Type and",
+                        "this page becomes",
+                        "that effect's page",
+                        "with named knobs."
+                    ]
+                },
+                {
+                    "title": "FX 2 Chorus",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Delay  6 Fdbk",
+                        "7 Sprd  8 Mode",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Flanger",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Fdbk  6 Delay",
+                        "7 Sprd  8 Sync",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Phaser",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Fdbk  6 Stage",
+                        "7 Centr  8 Sprd",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Tremolo",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Rate  4 Depth",
+                        "",
+                        "5 Shape  6 Sync",
+                        "7 Ster  8 Phase",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Drive",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Gain  4 Tone",
+                        "",
+                        "5 Curve  6 Out",
+                        "7 LoCut  8 Crush",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Comp",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Thr  4 Ratio",
+                        "",
+                        "5 Atk  6 Rel",
+                        "7 Make  8 Knee",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 EQ",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Low  4 Mid",
+                        "",
+                        "5 MidF  6 High",
+                        "7 Q  8 LoCut",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Delay",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Time  4 Sync",
+                        "",
+                        "5 Fdbk  6 Tone",
+                        "7 PingP  8 Mod",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Reverb",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Size  4 Decay",
+                        "",
+                        "5 Damp  6 PreD",
+                        "7 Mod  8 Width",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Shimmer",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Size  4 Decay",
+                        "",
+                        "5 Damp  6 Shim",
+                        "7 Intvl  8 Mod",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                },
+                {
+                    "title": "FX 2 Trance Gate",
+                    "lines": [
+                        "1 Type  2 Mix",
+                        "3 Patt  4 Grid",
+                        "",
+                        "5 Atk  6 Rel",
+                        "7 Len  8 Floor",
+                        "",
+                        "Touch a knob to see",
+                        "its value in real",
+                        "units."
+                    ]
+                }
+            ]
+        },
+        {
+            "title": "Layers",
+            "lines": [
+                "Layers sets how many",
+                "layers sound (1-4).",
+                "",
+                "Stack layers them.",
+                "RoundRb rotates per",
+                "note. RandRR picks",
+                "randomly. Split uses",
+                "keys. Chan uses MIDI",
+                "channels.",
+                "",
+                "Edit chooses the",
+                "layer every layer",
+                "page edits.",
+                "The header shows L1",
+                "to L4 when Layers",
+                "is above 1.",
+                "",
+                "Hold Copy and pick",
+                "a layer to copy it.",
+                "Hold Delete and pick",
+                "a layer to clear it.",
+                "Undo reverses that."
+            ]
+        },
+        {
+            "title": "Expression",
+            "lines": [
+                "Pads send notes and",
+                "poly aftertouch.",
+                "",
+                "Play page:",
+                "VW1 VW2 VFlt VAmp",
+                "set velocity depth.",
+                "Kbd tracks cutoff.",
+                "ATWav ATCut ATVib",
+                "set pressure depth.",
+                "",
+                "Bend range is on",
+                "the Layers page.",
+                "MPE On gives per-",
+                "note bend, pressure",
+                "and timbre."
+            ]
+        },
+        {
+            "title": "MIDI CC",
+            "lines": [
+                "CC1: Mod wheel",
+                "CC2: Breath",
+                "CC4: Foot",
+                "CC11: Expression",
+                "CC64: Sustain",
+                "CC74: Timbre",
+                "CC120: Ch sound off",
+                "CC121: Reset CCs",
+                "CC123: Ch notes off"
+            ]
+        },
+        {
+            "title": "Mod Sources",
+            "lines": [
+                "Off, Wave Env,",
+                "Filter Env, Amp Env,",
+                "LFO1, LFO2, LFO1xMW,",
+                "LFO2xMW, Velocity,",
+                "Release Vel, Key,",
+                "Poly AT, Chan AT,",
+                "ModWheel, Breath,",
+                "Foot, Expression,",
+                "Pitch Bend, Timbre,",
+                "Sustain, Random,",
+                "Random Bi, Voice #,",
+                "Layer Alt, Constant,",
+                "Flavour, Aux Env."
+            ]
+        },
+        {
+            "title": "Mod Targets",
+            "lines": [
+                "Off, Pitch,",
+                "Osc1/Osc2 Pitch,",
+                "Osc1/Osc2 Wave,",
+                "Osc1/Osc2 Level,",
+                "Dirt Level, Cutoff,",
+                "Resonance, Drive,",
+                "Pan, Amp Level,",
+                "LFO1/LFO2 Rate,",
+                "LFO1/LFO2 Depth,",
+                "E1/E2/E3 Decay,",
+                "E1 Attack,",
+                "E3 Release, Glide,",
+                "FX Send, XMod."
+            ]
+        },
+        {
+            "title": "Effects",
+            "lines": [
+                "11 types: Chorus,",
+                "Flanger, Phaser,",
+                "Tremolo, Drive,",
+                "Comp, EQ, Delay,",
+                "Reverb, Shimmer,",
+                "Trance Gate.",
+                "",
+                "FX1 and FX2 each",
+                "have Type and Mix.",
+                "Chain runs them in",
+                "Parallel or Serial.",
+                "",
+                "Layer route picks",
+                "Dry, FX1 or FX2.",
+                "Send feeds the FX.",
+                "Type pages name",
+                "their six knobs."
+            ]
+        },
+        {
+            "title": "Tips",
+            "lines": [
+                "Touch a knob to see",
+                "its full name.",
+                "Shift+turn is fine.",
+                "",
+                "Envelopes are drawn",
+                "on their own page.",
+                "Viz groups fill a",
+                "whole row of four.",
+                "",
+                "The state blob saves",
+                "every key, so old",
+                "presets keep their",
+                "sound after updates."
+            ]
+        }
+    ]
+}

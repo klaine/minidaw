@@ -1,0 +1,87 @@
+/* Styles for the modules loaded after first paint (presets, layers, FX chain,
+   help).  Injected by lazy.js on first use. */
+
+/* ------------------------------------------------------------ drawers */
+.drawer {
+  position: fixed; top: 0; bottom: 0; z-index: 40; width: min(520px, 100%);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 0 40px rgba(0, 0, 0, .55);
+  transition: transform .2s ease; visibility: hidden;
+}
+.drawer.open { visibility: visible; transform: none; }
+.drawer-right { right: 0; width: min(380px, 100%); transform: translateX(102%); border-right: 0; overflow-y: auto; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.drawer-head .card-title { margin: 0; }
+@media (min-width: 1200px) { .help-open .app { margin-right: 380px; } }
+
+/* ------------------------------------------------------------ layers */
+.mode-help { color: var(--dim); font-size: 12px; margin: 0 0 6px; flex: 1 1 200px; align-self: center; }
+.layer-cols { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); margin-top: 12px; }
+.layer-col { border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 8px; padding: 10px; background: var(--panel-2); }
+.layer-col.focused { box-shadow: 0 0 0 1px var(--c); }
+.layer-col.unused { opacity: .4; }
+.layer-col.muted .layer-col-title { opacity: .6; }
+.layer-col .ctl-row + .ctl-row { margin-top: 8px; }
+.layer-col .knob-fill, .layer-col .seg-btn.on { stroke: var(--c); }
+.layer-col .seg-btn.on { background: var(--c); }
+.layer-col .toggle.on { color: var(--c); border-color: var(--c); }
+.layer-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.layer-col-title { border: 0; background: none; color: var(--c); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 0; }
+.layer-copy { min-height: 26px; font-size: 11px; }
+.keysplit { margin-top: 14px; }
+.keysplit-svg { display: block; width: 100%; height: 150px; border: 1px solid var(--line); border-radius: 8px; background: #090c0f; touch-action: none; }
+.keysplit.inactive .ks-layer { opacity: .45; }
+.kb-white { fill: #d9dee2; stroke: #0b0e11; stroke-width: .6; }
+.kb-black { fill: #1a1f24; stroke: #0b0e11; stroke-width: .6; }
+.kb-label { fill: #5d6a74; font: 8px ui-monospace, monospace; }
+.ks-bar { fill: color-mix(in srgb, var(--c) 30%, transparent); stroke: var(--c); stroke-width: 1; }
+.ks-handle { fill: var(--c); cursor: ew-resize; outline: none; }
+.ks-handle:focus-visible { stroke: #fff; stroke-width: 2; }
+.ks-text { fill: var(--text); font: 10px ui-monospace, monospace; pointer-events: none; }
+.ks-layer.unused { opacity: .25; }
+
+/* ------------------------------------------------------------ fx chain */
+.fxchain { display: block; width: 100%; height: auto; max-height: 150px; margin-bottom: 10px; }
+.fx-wire { fill: none; stroke: var(--line-2); stroke-width: 1.5; }
+.fx-wire.layer { stroke: var(--c); stroke-width: 2; }
+.fx-wire.serial { stroke: var(--global); stroke-dasharray: 3 3; }
+.fx-node rect { fill: var(--raised); stroke: var(--global); }
+.fx-node.off rect { stroke: var(--line-2); }
+.fx-node text, .fx-out text, .fx-layer text, .fx-chain-toggle text { fill: var(--text); font: 10px system-ui, sans-serif; pointer-events: none; }
+.fx-node.off text { fill: var(--faint); }
+.fx-out circle { fill: var(--raised); stroke: var(--line-2); }
+.fx-layer, .fx-chain-toggle { cursor: pointer; outline: none; }
+.fx-layer rect { fill: color-mix(in srgb, var(--c) 18%, var(--raised)); stroke: var(--c); }
+.fx-layer.muted rect { opacity: .4; }
+.fx-layer:focus-visible rect, .fx-chain-toggle:focus-visible rect { stroke-width: 2.5; }
+.fx-send { fill: var(--dim) !important; font: 9px ui-monospace, monospace !important; }
+.fx-chain-toggle rect { fill: var(--panel); stroke: var(--line-2); }
+.fx-chain-toggle:hover rect { stroke: var(--global); }
+
+/* ------------------------------------------------------------ help */
+.help-panel section + section { border-top: 1px solid var(--line); padding-top: 10px; }
+.help-name { margin: 0 0 6px; font-size: 15px; }
+.help-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+.help-facts dt { color: var(--faint); }
+.help-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.help-lines { margin: 0; white-space: pre-wrap; color: var(--dim); font: 11px/1.5 var(--mono); }
+.help-topic summary { cursor: pointer; padding: 5px 0; color: var(--text); font-weight: 600; }
+
+/* ------------------------------------------------------------ keyboard */
+.keys-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: none; gap: 8px; align-items: stretch;
+  padding: 8px 12px max(8px, env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line-2);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, .4);
+}
+.keys-bar.open { display: flex; }
+.keys-open .app { padding-bottom: 120px; }
+.keys-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.keys-oct { color: var(--dim); font: 10px var(--mono); white-space: nowrap; }
+.keys-board { position: relative; flex: 1; display: flex; height: 92px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.kb-key {
+  position: relative; flex: 1; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px;
+  border: 1px solid #0b0e11; border-radius: 0 0 5px 5px; background: #d9dee2; color: #5d6a74; font: 9px var(--mono);
+}
+.kb-key.black { flex: .62; margin: 0 -2.4%; z-index: 1; height: 60%; background: #1a1f24; color: #8d9ba5; }
+.kb-key.down { background: var(--layer); color: #0b0e11; }
+.kb-key.black.down { background: color-mix(in srgb, var(--layer) 70%, #000); }

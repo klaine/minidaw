@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>minidaw</title>
+<meta name="description" content="A small DAW for the browser and the iPad, with Crest, Amino, Bizar and PRO-8000 V built in.">
+<meta name="theme-color" content="#16171a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="minidaw">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="boot" class="boot">
+  <div class="boot-card">
+    <div class="boot-logo"><span class="boot-mark"></span>minidaw</div>
+    <p>Multitrack sequencer with Crest, Amino, Bizar and PRO-8000 V, a Drum Rack and audio tracks.</p>
+    <button id="boot-start" class="btn primary big" type="button" disabled>Loading…</button>
+    <p class="boot-small" id="boot-msg">Works offline once loaded. On iPad: Share → Add to Home Screen.</p>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

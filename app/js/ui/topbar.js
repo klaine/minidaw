@@ -5,7 +5,7 @@ import { menu, numberDrag, toast, segmented, drawMeter } from "./controls.js";
 import { INSTRUMENT_KINDS } from "../model.js";
 import { openProjects, exportDialog, recordOutput, settingsSheet } from "./projects.js";
 import { importMidiAsTracks } from "./import.js";
-import { openKitBuilder } from "./kitbuilder.js";
+import { openKitBuilder, exportKitAs } from "./kitbuilder.js";
 import { recordSettings } from "./recsettings.js";
 import { gestures } from "./gestures.js";
 
@@ -98,10 +98,15 @@ export class Topbar {
 
   exportMenu(anchor) {
     const app = this.app;
+    const isDrums = (t) => t && t.instrument && t.instrument.kind === "drumrack";
+    const drums = isDrums(app.store.selectedTrack) ? app.store.selectedTrack : app.store.project.tracks.find(isDrums);
     menu(anchor, [
       { label: "Export mix (WAV)…", onClick: () => exportDialog(app, { stems: false }) },
       { label: "Export stems (zip of WAVs)…", onClick: () => exportDialog(app, { stems: true }) },
       "-",
+      drums && { label: `${drums.name}: kit for Ableton Move…`, onClick: () => exportKitAs(app, drums.id, "move") },
+      drums && { label: `${drums.name}: Drum Rack for Ableton Live…`, onClick: () => exportKitAs(app, drums.id, "live") },
+      drums && "-",
       { label: app.outputRec ? "Stop recording the output" : "Record the output (live)", checked: !!app.outputRec, onClick: () => recordOutput(app) },
     ], { title: "Export" });
   }

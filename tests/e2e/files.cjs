@@ -101,4 +101,57 @@ function writeKitFolder(dir, name) {
   return root;
 }
 
-module.exports = { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder };
+/**
+ * Drums as a sample pack without names might have them ("Sample 01.wav"...), synthesized here: a kick (a falling sine),
+ * a snare (noise over a tone), a closed and an open hat (high noise), a low tom, two more kicks; at different levels, one with silence
+ * before it. -> [{ path, bytes, is, level, lead }]
+ */
+function anonymousDrums() {
+  const R = 44100;
+  let seed = 7;
+  const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const wav = (secs, fn, { level = 0.9, lead = 0 } = {}) => {
+    const n = Math.round((secs + lead) * R), b = Buffer.alloc(44 + n * 2);
+    b.write("RIFF", 0); b.writeUInt32LE(36 + n * 2, 4); b.write("WAVE", 8); b.write("fmt ", 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+    b.writeUInt32LE(R, 24); b.writeUInt32LE(R * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write("data", 36); b.writeUInt32LE(n * 2, 40);
+    const x = new Float64Array(n);
+    for (let i = Math.round(lead * R); i < n; i++) x[i] = fn(i / R - lead);
+    let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
+    for (let i = 0; i < n; i++) b.writeInt16LE(Math.round((x[i] / peak) * level * 32767), 44 + i * 2);
+    return b;
+  };
+  let hp = 0;
+  const high = (v) => { hp += 0.63 * (v - hp); return v - hp; }; // a one-pole high-pass near 7 kHz
+  return [
+    { is: "hat", level: 0.3, lead: 0, bytes: wav(0.08, (t) => high(noise()) * Math.exp(-t / 0.015), { level: 0.3 }) },
+    { is: "kick", level: 0.9, lead: 0.08, bytes: wav(0.4, (t) => Math.sin(2 * Math.PI * (50 * t + 3 * (1 - Math.exp(-t / 0.03)))) * Math.exp(-t / 0.12), { level: 0.9, lead: 0.08 }) },
+    { is: "openhat", level: 0.5, lead: 0, bytes: wav(0.6, (t) => high(noise()) * Math.exp(-t / 0.12), { level: 0.5 }) },
+    { is: "snare", level: 0.6, lead: 0, bytes: wav(0.25, (t) => (0.6 * noise() + 0.5 * Math.sin(2 * Math.PI * 190 * t)) * Math.exp(-t / 0.05), { level: 0.6 }) },
+    { is: "tomlo", level: 0.8, lead: 0, bytes: wav(0.5, (t) => Math.sin(2 * Math.PI * 90 * t) * Math.exp(-t / 0.12), { level: 0.8 }) },
+    { is: "kick", level: 0.7, lead: 0, bytes: wav(0.35, (t) => Math.sin(2 * Math.PI * (56 * t + 2.5 * (1 - Math.exp(-t / 0.025)))) * Math.exp(-t / 0.1), { level: 0.7 }) },
+    { is: "kick", level: 0.8, lead: 0, bytes: wav(0.45, (t) => Math.sin(2 * Math.PI * (45 * t + 3.5 * (1 - Math.exp(-t / 0.035)))) * Math.exp(-t / 0.14), { level: 0.8 }) },
+  ].map((d, i) => ({ ...d, path: `Sample ${String(i + 1).padStart(2, "0")}.wav` }));
+}
+
+/** A zip's files ([{ path, bytes }]): stored or deflated entries, read here, not by the app */
+function readZip(buf) {
+  const zlib = require("zlib");
+  let end = buf.length - 22;
+  while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
+  if (end < 0) throw new Error("not a zip");
+  const count = buf.readUInt16LE(end + 10);
+  let p = buf.readUInt32LE(end + 16);
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error("bad central directory");
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32), off = buf.readUInt32LE(p + 42);
+    const name = buf.toString("utf8", p + 46, p + 46 + nlen);
+    const at = off + 30 + buf.readUInt16LE(off + 26) + buf.readUInt16LE(off + 28);
+    const raw = buf.subarray(at, at + csize);
+    out.push({ path: name, bytes: method === 8 ? zlib.inflateRawSync(raw) : Buffer.from(raw) });
+    p += 46 + nlen + xlen + clen;
+  }
+  return out;
+}
+
+module.exports = { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip };

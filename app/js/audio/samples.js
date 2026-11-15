@@ -59,6 +59,9 @@ const LOOPS = {
     shaker: "xxxxxxxxxxxxxxxx", cowbell: "..x.....x.x.....", clave: "x..x..x...x..x..", tommid: ".......x.......x" } },
 };
 
+/** A built-in one-shot's samples (its id without "builtin:"), or null */
+export function builtinSound(k) { return KIT[k] ? KIT[k]() : null; }
+
 const KIT_NAMES = { hat: "Closed Hat", openhat: "Open Hat", tomlo: "Low Tom", tommid: "Mid Tom", tomhi: "High Tom", sub: "808" };
 export const BUILTIN_SAMPLES = [
   ...Object.keys(KIT).map((k) => ({ id: "builtin:" + k, name: KIT_NAMES[k] || k[0].toUpperCase() + k.slice(1), kind: "oneshot" })),
@@ -176,7 +179,8 @@ export class SampleBank {
   }
 }
 
-function decode(ctx, bytes) {
+/** Bytes (a WAV, an MP3...) decoded to an AudioBuffer */
+export function decode(ctx, bytes) {
   return new Promise((resolve, reject) => {
     const copy = bytes.slice(0);
     const p = ctx.decodeAudioData(copy, resolve, reject); // the callback form for older Safari

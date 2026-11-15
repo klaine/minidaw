@@ -13,7 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
-const { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder } = require("./files.cjs");
+const { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder, anonymousDrums, readZip } = require("./files.cjs");
 
 const ROOT = path.join(__dirname, "..", "..");
 const APP = path.join(ROOT, "app");
@@ -466,6 +466,128 @@ const FLOWS = {
     const hd = await u.box(u.header("Drums").first()); // the demo's (the new kit's track is a "Drums" too, after it)
     await u.dropFiles(hd.x + 60, hd.y + 20, [{ name: "Dropped.zip", type: "application/zip", bytes: makeZip(kitFiles().map((f) => ({ path: "Dropped/" + f.path, bytes: f.bytes }))) }]);
     await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[1].name === "Snare Tight", "the dropped kit on the Drums", 10000);
+  },
+
+  async "auto kit: samples without names placed by their sound, tidied, and another kit on each press"(u) {
+    await u.boot();
+    await u.header("Drums").locator(".th-name").tap();
+    await u.tab("Device");
+    await u.tap("Kit builder…");
+    const lib = u.page.locator(".kb .lib");
+    await lib.waitFor();
+    const drums = anonymousDrums();
+    const dir = path.join(OUT, "Mystery Pack");
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    for (const d of drums) fs.writeFileSync(path.join(dir, d.path), d.bytes);
+    await u.tap("Import ▾");
+    await u.chooseFile(() => u.menuItem("A folder (with its subfolders)"), dir);
+    await u.page.locator(".toast", { hasText: `${drums.length} samples added` }).waitFor({ timeout: 10000 });
+    await lib.locator(".lib-crumb", { hasText: /^Mystery Pack$/ }).waitFor();
+    await u.tap("Auto kit");
+    await u.page.locator(".kb-status", { hasText: "Auto kit from Mystery Pack" }).waitFor({ timeout: 15000 });
+    const pads = async () => u.state(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads);
+    const name = (d) => d.path.replace(".wav", "");
+    const kicks = drums.filter((d) => d.is === "kick").map(name);
+    const is = (role) => name(drums.find((d) => d.is === role));
+    let ps = await pads();
+    assert.ok(kicks.includes(ps[0].name), "a kick on pad 1: " + ps[0].name);
+    assert.deepStrictEqual([ps[1].name, ps[2].name, ps[3].name, ps[5].name], [is("snare"), is("hat"), is("openhat"), is("tomlo")], "snare, hats and the low tom on their pads: " + ps.slice(0, 6).map((p) => p.name));
+    assert.ok(kicks.includes(ps[14].name) && ps[14].name !== ps[0].name, "another kick on the 808 pad: " + ps[14].name);
+    assert.match(await u.page.locator(".kb-status").textContent(), /7 pads, 0 known by name, 7 by their sound/);
+    // tidied: the snare peaks at -1 dB at full velocity, the open hat 4 dB under; the kick with 80 ms of silence starts on its sound
+    const snare = ps[1], open = ps[3];
+    assert.ok(Math.abs(20 * Math.log10(snare.gain * 1.25 * 0.6) + 1) < 0.3, "the snare's level evened out (gain " + snare.gain + ")");
+    assert.ok(Math.abs(20 * Math.log10(open.gain * 1.25 * 0.5) + 5) < 0.3, "the open hat's, 4 dB lower (gain " + open.gain + ")");
+    const late = ps.find((p) => p.name === "Sample 02");
+    assert.ok(late && near(late.start, 0.079 / 0.48, 0.01), "the late kick trimmed to where it starts: " + (late && late.start));
+    await u.button("Kit pad 1: " + ps[0].name).tap();
+    assert.ok(db(await u.level("Drums", 600)) > -35, "the kit plays");
+    // again: another kick each time some of the time, but always a kick
+    const seen = new Set([ps[0].name]);
+    for (let k = 0; k < 10 && seen.size < 2; k++) {
+      await u.tap("Auto kit");
+      await u.page.waitForTimeout(250);
+      ps = await pads();
+      assert.ok(kicks.includes(ps[0].name) && ps[1].name === is("snare"), "every roll fits its pads: " + ps[0].name);
+      seen.add(ps[0].name);
+    }
+    assert.ok(seen.size >= 2, "Auto kit again makes another kit: " + [...seen]);
+    // from the library's top: every folder, the built-in kit too
+    await lib.locator(".lib-crumb", { hasText: /^Library$/ }).tap();
+    await u.tap("Auto kit");
+    await u.page.locator(".kb-status", { hasText: "Auto kit from the library: 16 pads" }).waitFor({ timeout: 15000 });
+    ps = await pads();
+    assert.ok(ps.every((p) => p.sample), "all 16 pads filled from the whole library");
+    assert.ok(["Kick", ...kicks].includes(ps[0].name), "still a kick on pad 1: " + ps[0].name);
+    // Tidy pads on the default kit: nothing to trim, the levels evened out
+    await u.tap("Default kit");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick", "the default kit", 8000);
+    await u.tap("Tidy pads");
+    await u.page.locator(".kb-status", { hasText: "Tidied" }).waitFor({ timeout: 8000 });
+    ps = await pads();
+    assert.ok(ps.every((p) => p.start === 0), "the built-in sounds start at once: nothing trimmed");
+    assert.ok(ps[0].gain !== 0.8 && ps[2].gain < ps[0].gain * 1.5, "levels set from the sounds: kick " + ps[0].gain + ", hat " + ps[2].gain);
+    await u.sheetButton("Done");
+  },
+
+  async "export the kit for Ableton Move and for Ableton Live"(u) {
+    await u.boot();
+    await u.header("Drums").locator(".th-name").tap();
+    await u.tab("Device");
+    // pad 1 reversed, by its toggle: the export should play it as it plays here
+    assert.strictEqual(await u.state(() => window.minidaw.store.ui.drumPad || 0), 0, "pad 1 is the one being edited");
+    await u.page.locator(".drum-edit .tog", { hasText: /^Reverse$/ }).tap();
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].reverse === true, "pad 1 reversed");
+    await u.tap("Kit builder…");
+    await u.tap("Export ▾");
+    await u.menuItem("For Ableton Move");
+    await u.page.locator(".sheet input.text").last().fill("Night Kit");
+    const [move] = await Promise.all([u.page.waitForEvent("download", { timeout: 30000 }), u.sheetButton("OK")]);
+    assert.strictEqual(move.suggestedFilename(), "Night Kit.ablpresetbundle");
+    const mfile = path.join(OUT, "Night Kit.ablpresetbundle");
+    await move.saveAs(mfile);
+    const files = readZip(fs.readFileSync(mfile));
+    const byPath = new Map(files.map((f) => [f.path, f.bytes]));
+    assert.ok(byPath.has("Preset.ablpreset"), "Preset.ablpreset at the top: " + [...byPath.keys()].slice(0, 3));
+    const preset = JSON.parse(byPath.get("Preset.ablpreset").toString("utf8"));
+    const rack = preset.chains[0].devices[0];
+    assert.strictEqual(preset.kind, "instrumentRack");
+    assert.strictEqual(rack.kind, "drumRack");
+    assert.strictEqual(rack.chains.length, 16);
+    const wavs = rack.chains.map((c, i) => {
+      assert.strictEqual(c.drumZoneSettings.receivingNote, 36 + i, "pad " + (i + 1) + "'s note");
+      const uri = c.devices[0].deviceData.sampleUri;
+      const bytes = byPath.get(decodeURIComponent(uri));
+      assert.ok(bytes, "pad " + (i + 1) + "'s sample is in the bundle: " + uri);
+      return readWav(bytes);
+    });
+    assert.strictEqual([...byPath.keys()].filter((p) => p.startsWith("Samples/")).length, 16, "16 samples");
+    assert.ok(wavs.every((w) => w.rate === 44100 && w.frames > 1000 && w.peak() > 0.1), "every sample a real sound");
+    assert.ok(wavs[0].rms(wavs[0].frames / 44100 - 0.02, wavs[0].frames / 44100) > 4 * wavs[0].rms(0, 0.02), "pad 1's kick reversed in its WAV: loud at its end");
+    assert.ok(wavs[1].rms(0, 0.02) > 4 * wavs[1].rms(wavs[1].frames / 44100 - 0.02, wavs[1].frames / 44100), "pad 2's snare as it is: loud at its start");
+    assert.deepStrictEqual(rack.chains.map((c) => c.drumZoneSettings.chokeGroup).slice(0, 4), [null, null, 1, 1], "the hats choke each other");
+    await u.page.locator(".kb-status", { hasText: "Move Manager" }).waitFor();
+    await u.sheetButton("Done");
+    // Live, from the top bar's Export menu
+    await u.tap("Export, record the output");
+    await u.menuItem("Drums: Drum Rack for Ableton Live");
+    await u.page.locator(".sheet input.text").last().fill("Night Kit");
+    const [live] = await Promise.all([u.page.waitForEvent("download", { timeout: 30000 }), u.sheetButton("OK")]);
+    const lfile = path.join(OUT, "night-live.zip");
+    await live.saveAs(lfile);
+    const lz = new Map(readZip(fs.readFileSync(lfile)).map((f) => [f.path, f.bytes]));
+    assert.ok(lz.has("Night Kit/Night Kit.adg") && lz.has("Night Kit/Read me.txt"), "the .adg in its folder: " + [...lz.keys()].slice(0, 3));
+    const xml = require("zlib").gunzipSync(lz.get("Night Kit/Night Kit.adg")).toString("utf8");
+    assert.ok(xml.startsWith("<?xml") && xml.includes("<DrumGroupDevice"), "a gzipped Live Drum Rack");
+    const branches = xml.split("<DrumBranchPreset ").slice(1);
+    assert.strictEqual(branches.length, 16, "16 pads");
+    for (const [i, b] of branches.entries()) {
+      const rel = b.slice(b.indexOf("<SampleRef>")).match(/<RelativePath Value="([^"]*)"/)[1];
+      assert.ok(lz.has("Night Kit/" + rel), "pad " + (i + 1) + "'s sample beside the .adg: " + rel);
+      assert.strictEqual(b.match(/<ReceivingNote Value="(\d+)"/)[1], String(92 - i), "pad " + (i + 1) + "'s note");
+      assert.strictEqual(+b.match(/<DefaultDuration Value="(\d+)"/)[1], readWav(lz.get("Night Kit/" + rel)).frames, "its length");
+    }
   },
 
   async "session: launch a scene, stop a track, back to the arrangement"(u) {

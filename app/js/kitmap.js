@@ -43,13 +43,16 @@ function tomRole(s) {
 }
 
 /**
- * samples: [{ id, name, path }] -> 16 pads: [{ id, name } | null], in ROLES order. Each pad takes the first sample of its
- * role (by path, so "Kick 01" before "Kick 02"); toms without a height fill the tom pads in turn; the pads left over get
- * the samples left over, unclassified ones first.
+ * samples: [{ id, name, path }] -> 16 pads: [{ id, name, role } | null], in ROLES order. Each pad takes the first sample
+ * of its role (by path, so "Kick 01" before "Kick 02"); toms without a height fill the tom pads in turn; the pads left
+ * over get the samples left over, unclassified ones first.
+ * roleOf(sample): its role (default: classify(path)); rng: () -> [0, 1): a random pick among each role's samples instead
+ * of the first (the automatic kit's "another one").
  */
-export function buildKit(samples) {
+export function buildKit(samples, { roleOf, rng } = {}) {
   const sorted = [...samples].sort((a, b) => natural(a.path || a.name, b.path || b.name));
-  const roles = new Map(sorted.map((s) => [s, classify(s.path || s.name)]));
+  if (rng) for (let i = sorted.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [sorted[i], sorted[j]] = [sorted[j], sorted[i]]; }
+  const roles = new Map(sorted.map((s) => [s, roleOf ? roleOf(s) : classify(s.path || s.name)]));
   const used = new Set();
   const pads = ROLES.map(() => null);
   const take = (pred) => { const s = sorted.find((x) => !used.has(x) && pred(x)); if (s) used.add(s); return s || null; };
@@ -59,8 +62,11 @@ export function buildKit(samples) {
   if (!pads[3]) pads[3] = take((s) => roles.get(s) === "hat");    // a second hat for the open hat
   const rest = sorted.filter((s) => !used.has(s)).sort((a, b) => (roles.get(a) ? 1 : 0) - (roles.get(b) ? 1 : 0));
   for (let i = 0; i < 16 && rest.length; i++) if (!pads[i]) { pads[i] = rest.shift(); used.add(pads[i]); }
-  return pads.map((s) => (s ? { id: s.id, name: s.name } : null));
+  return pads.map((s) => (s ? { id: s.id, name: s.name, role: roles.get(s) || null } : null));
 }
 
 /** "Kick 2" before "Kick 10" */
 export function natural(a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }); }
+
+/** A seeded random generator: () -> [0, 1) */
+export function seeded(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; }; }

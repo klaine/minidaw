@@ -4,9 +4,10 @@
 // bytes, so it lists hundreds without loading them. The built-in kit and loops are a folder of their own.
 import { db } from "./db.js";
 import { uid } from "./util.js";
-import { BUILTIN_SAMPLES } from "./audio/samples.js";
+import { BUILTIN_SAMPLES, decode } from "./audio/samples.js";
+import { bufferFeatures, roleOfSound } from "./kitsound.js";
 import { unzip } from "./unzip.js";
-import { natural } from "./kitmap.js";
+import { natural, classify } from "./kitmap.js";
 
 export const AUDIO_EXT = /\.(wav|wave|aif|aiff|aifc|mp3|m4a|aac|flac|ogg|oga|opus|caf)$/i;
 export const BUILTIN_ROOT = "Built-in";
@@ -21,6 +22,7 @@ export class Library {
     this.samples = samples;
     this.items = [];   // { id, name, folder, size, type, addedAt }
     this.listeners = new Set();
+    this.sounds = new Map(); // id -> features, for the built-in samples (the user's are kept in their items)
     this.builtin = BUILTIN_SAMPLES.map((b) => ({ id: b.id, name: b.name, folder: BUILTIN_ROOT + "/" + (b.kind === "loop" ? "Loops" : "Drum kit"), builtin: true, bpm: b.bpm }));
   }
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -54,16 +56,44 @@ export class Library {
       samples: samples.sort((a, b) => natural(a.name, b.name)),
     };
   }
-  /** Every sample in a folder and its subfolders */
+  /** Every sample in a folder and its subfolders ("": the whole library) */
   under(folder) {
     folder = clean(folder);
-    return this.all().filter((it) => it.folder === folder || it.folder.startsWith(folder + "/")).sort((a, b) => natural(this.path(a), this.path(b)));
+    return this.all().filter((it) => !folder || it.folder === folder || it.folder.startsWith(folder + "/")).sort((a, b) => natural(this.path(a), this.path(b)));
   }
   search(q) {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return [];
     return this.all().filter((it) => { const s = this.path(it).toLowerCase(); return words.every((w) => s.includes(w)); })
       .sort((a, b) => natural(this.path(a), this.path(b))).slice(0, 300);
+  }
+
+  /** What a sample sounds like (js/kitsound.js), if it has been listened to: null if it hasn't */
+  sound(it) { return (it.builtin ? this.sounds.get(it.id) : it.sound) || null; }
+  /** A sample's role on a kit: by its name and folders, else by its sound (once analysed) */
+  roleOf(it) { return classify(this.path(it)) || roleOfSound(this.sound(it)); }
+
+  /**
+   * Listen to the samples that haven't been: decode each (without keeping it decoded) and keep its features in the
+   * library's index, so it's done once a sample. onProgress(done, total).
+   */
+  async analyze(items, ctx, onProgress) {
+    const todo = items.filter((it) => !this.sound(it));
+    let n = 0, dirty = false;
+    for (const it of todo) {
+      let f = null;
+      try {
+        let b = this.samples.buffer(it.id);
+        if (!b && it.builtin) b = await this.samples.load(it.id, ctx);
+        if (!b) { const rec = await db.loadSample(it.id); if (rec) b = await decode(ctx, rec.bytes); }
+        f = b ? bufferFeatures(b) : null;
+      } catch (_) { f = null; } // not decodable: a silent sound, analysed once
+      const sound = f ? Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Math.round(v * 1e5) / 1e5])) : { peak: 0, dur: 0 };
+      if (it.builtin) this.sounds.set(it.id, sound); else { it.sound = sound; dirty = true; }
+      if (onProgress) onProgress(++n, todo.length);
+      if (dirty && n % 50 === 0) await this.save();
+    }
+    if (dirty) await this.save();
   }
 
   /** A sample already saved elsewhere (a pad's import, a recording): listed in its folder */

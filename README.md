@@ -40,11 +40,30 @@ bridged to the track it plays on.
     the sample library beside the pads.
     - **Placing samples.** Tap a sample to hear and pick it, then tap a pad. With a mouse you can also drag it onto a
       pad.
-    - **Building kits.** **Build from this folder** places a whole folder, subfolders included, on the pads by what
-      each sample is: kick, snare, closed and open hat, clap, toms by height, rim, cowbell, crash, ride, shaker,
-      clave, 808 and perc. The names and folder names decide it ("Kicks/BD 01", "OHH"). **Fill in order** places
-      them on pads 1 to 16 instead.
+    - **Auto kit.** **Auto kit** makes a whole kit from the open folder (subfolders included) or from the whole
+      library. Each pad gets a sample of its role: kick, snare, closed and open hat, clap, toms by height, rim,
+      cowbell, crash, ride, shaker, clave, 808 and perc. The names and folder names decide it first ("Kicks/BD 01",
+      "OHH"). A sample whose name says nothing ("Sample 041") is listened to once: its low end, brightness, noise,
+      pitch, length and attack sort it. These are plain rules, not a trained model, so a pack of odd sounds can
+      land on unexpected pads. Each pad's sample is picked at random among the ones that fit, so pressing Auto kit
+      again makes another kit (one undo each). The silence before each sample is trimmed, and the levels are evened
+      out: every pad peaks at -1 dB, cymbals and shakers 4 dB lower.
+    - **Other ways to build.** **Build from this folder** is the same without the dice and the tidying: the first
+      sample of each role. **Fill in order** places samples on pads 1 to 16 as they come. **Tidy pads** trims and
+      levels the kit you already have.
     - **Saving.** Kits can be saved and loaded on any Drum Rack.
+    - **Export for Ableton.** Export ▾ in the kit builder, or the top bar's Export menu, saves the kit:
+      - **Ableton Move** (and Note): a `.ablpresetbundle`, Move's own preset format. It has the shape Move's kits have:
+        an Instrument Rack with a Drum Rack of 16 Drum Samplers on notes 36 to 51, a return chain with a reverb (sends
+        off), and a saturator after the rack (dry). Drop it on Move Manager's Presets tab and press Upload.
+      - **Ableton Live**: a zip of a folder with a Drum Rack preset (`.adg`, Simplers in one-shot mode, Live 11
+        format, which Live 12 opens) and its Samples folder. Keep them together and drag the `.adg` into Live.
+      - **What carries over.** Each pad's WAV (24-bit) is what the pad plays here: trimmed, reversed if it is, with
+        its decay shaped in. Level, pan, pitch (in semitones), choke groups and mute go into the preset. A pad at the
+        default level sits at Move's -12 dB.
+      - **Untested on the hardware.** The Move bundle follows Move's preset files as the extending-move project
+        documents them, and the Live rack is built from a Live 11 Drum Rack preset. Neither has been loaded on a Move
+        or in Live from here.
   - **From a clip.** Tap a row's name and then Pad sounds to open that pad's editor.
   - The built-in kit is synthesized in the app, so no third-party samples ship.
 - **Sample library.** All your samples, in their folders, browsable and searchable from every sample picker.
@@ -157,7 +176,7 @@ changing anything in `app/`.
 ## Tests
 
 ```sh
-npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips and kits
+npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips, kits, drums by their sound and the Ableton exports
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
 npm run test:e2e       # the user flows (below); CI runs both on every push (.github/workflows/test.yml)
 ```
@@ -169,7 +188,9 @@ browser profile and fails on any page error. The flows cover:
 - **Session, mixing and recording:** playing chosen session clips; session scenes; solo, mute and faders; recording
   with a count-in; a session loop; Capture.
 - **Steps and kits:** the step sequencer (accents, ratchets, painting, pages, swing); a kit built from a folder with
-  subfolders; a kit from a zip, and from a zip dropped on a track.
+  subfolders; a kit from a zip, and from a zip dropped on a track; an automatic kit from samples without names
+  (placed by their sound, trimmed and levelled, another on each press); the kit exported for Move and for Live, and
+  the files unpacked and checked in node.
 - **Files and project:** MIDI files; an audio loop; automation; a WAV export; a reload; undo and redo; portrait
   layout; starting offline.
 

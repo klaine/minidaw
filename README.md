@@ -14,9 +14,13 @@ bridged to the track it plays on.
 
 - **Tracks.** MIDI tracks host one instrument each: Crest, Amino, Bizar, PRO-8000 V or the Drum Rack. Audio tracks
   hold samples, loops and recordings. Each MIDI track runs its own instance of its instrument.
-- **Session view.** Clips sit in slots, a column per track and a row per scene, as in Ableton Live. Clips launch on
-  the next bar, and launch quantization is in the menu. You can launch a whole scene, stop a track, or tap
-  **Arrangement** to return the tracks to the timeline.
+- **Session view.** Clips sit in slots, a column per track and a row per scene, as in Ableton Live.
+  - **Playing clips.** Tap a clip to play it and tap it again to stop it. ✎ opens it in the editor, and long press
+    gives more.
+  - **Starting from the session.** Started from a stop, only the clips you launch play, with the arrangement silent
+    underneath. Tap **Arrangement** in the top bar to hear the arrangement again.
+  - **Scenes and stops.** Clips start on the next bar (launch quantization is in the menu). ▶ on the right plays a
+    whole row (a scene), and ■ stops a track.
 - **Arrangement view.** Clips sit on a timeline with a loop brace. Drag a clip to move it, its right edge to loop or
   resize it, and its left edge to trim it. Long press for duplicate, split, copy and paste, or make unique.
 - **Piano roll.** Draw and Select tools, grid and triplets, quantize, transpose, and ×2 to double a clip. Drum Rack
@@ -28,8 +32,25 @@ bridged to the track it plays on.
     to trim it, and its level, pan, pitch, start, end and decay. Reverse and choke groups are there too.
   - **More options.** Long press a pad to choose, import, rename, copy, paste or reset it. Drop an audio file on a
     pad to load it there.
-  - **From a clip.** In a Drum Rack clip, tap a row's name and then Pad sounds to open that pad's editor.
+  - **Step sequencer.** A Drum Rack clip opens as a grid with a row per pad and 16 steps per bar. Tap a step to set
+    or clear it, and drag along a row to paint or erase a run. Long press a step for its velocity or a ratchet (2, 3
+    or 4 hits in the step). Accent mode sets loud steps, and Swing delays the off-beat 16ths. Pages go bar by bar and
+    follow the playhead. The step length can be 1/8, 1/16, 1/32 or 1/16T, and the piano roll is one tap away.
+  - **Kit builder.** The kit builder (Drum Rack → Kit builder…, or Add track → Drum Rack from a sample folder…) shows
+    the sample library beside the pads.
+    - **Placing samples.** Tap a sample to hear and pick it, then tap a pad. With a mouse you can also drag it onto a
+      pad.
+    - **Building kits.** **Build from this folder** places a whole folder, subfolders included, on the pads by what
+      each sample is: kick, snare, closed and open hat, clap, toms by height, rim, cowbell, crash, ride, shaker,
+      clave, 808 and perc. The names and folder names decide it ("Kicks/BD 01", "OHH"). **Fill in order** places
+      them on pads 1 to 16 instead.
+    - **Saving.** Kits can be saved and loaded on any Drum Rack.
+  - **From a clip.** Tap a row's name and then Pad sounds to open that pad's editor.
   - The built-in kit is synthesized in the app, so no third-party samples ship.
+- **Sample library.** All your samples, in their folders, browsable and searchable from every sample picker.
+  - **Folders.** Import a folder with its subfolders. On an iPad, compress the folder in Files and import the zip.
+  - **Other imports.** You can also import loose files. Pad imports and recordings land in Imported and Recordings.
+  - **Dropping.** Dropping a folder or zip anywhere adds it to the library. On a Drum Rack it also builds the kit.
 - **Audio tracks.** Built-in drum loops or your own files (WAV, AIFF, MP3, M4A and more). Warp resamples a clip to the
   song's tempo, so its pitch follows the tempo.
 - **MIDI files.** Drop a `.mid` file on an instrument track's lane, a session slot or a track header, or use Import
@@ -136,17 +157,19 @@ changing anything in `app/`.
 ## Tests
 
 ```sh
-npm test               # the four engines in a stand-in AudioWorkletGlobalScope (start, timing, stop), the transport, MIDI files
+npm test               # the engines in a stand-in AudioWorkletGlobalScope, the transport (swing, session launches), MIDI files, undo, zips and kits
 npm run test:browser   # a Chromium smoke test (Playwright): start, play the demo, the views; screenshots in test-results/
 npm run test:e2e       # the user flows (below); CI runs both on every push (.github/workflows/test.yml)
 ```
 
 `tests/e2e/run.cjs` is a set of user flows, run in Chromium at an iPad's size with touch. Each starts from a fresh
 browser profile and fails on any page error. The flows cover:
-- **Playing and editing:** the first start; a beat drawn from scratch; drum pads (choose, trim, tune, import, drop,
-  copy, and a trimmed pad heard shorter); a synth's presets, knobs and keys; an instrument's own editor.
-- **Session, mixing and recording:** session scenes; solo, mute and faders; recording with a count-in; a session
-  loop; Capture.
+- **Playing and editing:** the first start; a beat in the step sequencer; drum pads (choose, trim, tune, import,
+  drop, copy, and a trimmed pad heard shorter); a synth's presets, knobs and keys; an instrument's own editor.
+- **Session, mixing and recording:** playing chosen session clips; session scenes; solo, mute and faders; recording
+  with a count-in; a session loop; Capture.
+- **Steps and kits:** the step sequencer (accents, ratchets, painting, pages, swing); a kit built from a folder with
+  subfolders; a kit from a zip, and from a zip dropped on a track.
 - **Files and project:** MIDI files; an audio loop; automation; a WAV export; a reload; undo and redo; portrait
   layout; starting offline.
 

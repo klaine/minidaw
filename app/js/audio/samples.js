@@ -59,8 +59,9 @@ const LOOPS = {
     shaker: "xxxxxxxxxxxxxxxx", cowbell: "..x.....x.x.....", clave: "x..x..x...x..x..", tommid: ".......x.......x" } },
 };
 
+const KIT_NAMES = { hat: "Closed Hat", openhat: "Open Hat", tomlo: "Low Tom", tommid: "Mid Tom", tomhi: "High Tom", sub: "808" };
 export const BUILTIN_SAMPLES = [
-  ...Object.keys(KIT).map((k) => ({ id: "builtin:" + k, name: k[0].toUpperCase() + k.slice(1), kind: "oneshot" })),
+  ...Object.keys(KIT).map((k) => ({ id: "builtin:" + k, name: KIT_NAMES[k] || k[0].toUpperCase() + k.slice(1), kind: "oneshot" })),
   ...Object.entries(LOOPS).map(([k, l]) => ({ id: "builtin:" + k, name: l.name, kind: "loop", bpm: l.bpm })),
 ];
 
@@ -137,18 +138,20 @@ export class SampleBank {
     const buffer = await decode(ctx, bytes);
     const id = uid("s");
     const name = file.name.replace(/\.[^.]+$/, "");
-    await db.saveSample({ id, name, bytes, type: file.type || "audio/wav", createdAt: Date.now() });
+    await db.saveSample({ id, name, bytes, type: file.type || "audio/wav", folder: "Imported", createdAt: Date.now() });
     this.buffers.set(id, buffer);
     this.info.set(id, { id, name });
+    if (this.onAdd) await this.onAdd({ id, name, folder: "Imported", size: bytes.byteLength, type: file.type || "audio/wav" });
     return { id, name, buffer, duration: buffer.duration };
   }
 
   /** A buffer made here (a recording): kept as WAV bytes */
   async addBuffer(buffer, name, wavBytes) {
     const id = uid("s");
-    await db.saveSample({ id, name, bytes: wavBytes, type: "audio/wav", createdAt: Date.now() });
+    await db.saveSample({ id, name, bytes: wavBytes, type: "audio/wav", folder: "Recordings", createdAt: Date.now() });
     this.buffers.set(id, buffer);
     this.info.set(id, { id, name });
+    if (this.onAdd) await this.onAdd({ id, name, folder: "Recordings", size: wavBytes.byteLength, type: "audio/wav" });
     return id;
   }
 

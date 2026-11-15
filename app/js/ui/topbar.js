@@ -5,6 +5,7 @@ import { menu, numberDrag, toast, segmented, drawMeter } from "./controls.js";
 import { INSTRUMENT_KINDS } from "../model.js";
 import { openProjects, exportDialog, recordOutput, settingsSheet } from "./projects.js";
 import { importMidiAsTracks } from "./import.js";
+import { openKitBuilder } from "./kitbuilder.js";
 import { recordSettings } from "./recsettings.js";
 import { gestures } from "./gestures.js";
 
@@ -91,6 +92,7 @@ export class Topbar {
       { label: "Audio track", hint: "samples, loops, input", onClick: () => app.addTrack("audio") },
       "-",
       { label: "Tracks from a MIDI file…", hint: ".mid", onClick: () => importMidiAsTracks(app) },
+      { label: "Drum Rack from a sample folder…", hint: "kit builder", onClick: async () => { const t = await app.addTrack("midi", "drumrack"); openKitBuilder(app, t.id); } },
     ], { title: "Add track" });
   }
 

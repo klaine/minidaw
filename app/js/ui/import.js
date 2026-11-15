@@ -6,6 +6,7 @@ import { sheet, toast, select } from "./controls.js";
 import { parseMidi, writeMidi, toDrumRack, isMidiFile, isAudioFile } from "../midifile.js";
 import { newTrack, newMidiClip, newAudioClip, guessBpm, INSTRUMENT_KINDS, DRUM_BASE_NOTE } from "../model.js";
 import { placeClip } from "../recording.js";
+import { openKitBuilder } from "./kitbuilder.js";
 
 export const MIDI_ACCEPT = ".mid,.midi,.smf,.kar,audio/midi,audio/x-midi,audio/mid,application/x-midi";
 const round = (x) => Math.round(x * 10000) / 10000;
@@ -198,6 +199,25 @@ async function importAudio(app, files, target) {
   }
 }
 
+/** Dropped folders or zips: into the library; on a Drum Rack (its pads, lane, header or device), its kit */
+async function dropFolders(app, entries, zips, x, y) {
+  const target = dropTarget(app, x, y);
+  toast("Importing…");
+  let r;
+  if (entries) r = await app.library.importDropped(entries);
+  else {
+    r = { added: [], skipped: 0, roots: [] };
+    for (const z of zips) { const q = await app.library.importZip(z); r.added.push(...q.added); r.skipped += q.skipped; r.roots.push(...q.roots); }
+  }
+  const drum = target && target.track && target.track.instrument && target.track.instrument.kind === "drumrack" ? target.track : null;
+  toast(`${r.added.length} samples into the library` + (r.roots.length ? ` (${r.roots.join(", ")})` : ""));
+  if (drum && r.roots.length) {
+    app.store.select({ selTrack: drum.id, panel: "device" });
+    const kb = openKitBuilder(app, drum.id, { folder: r.roots[0] });
+    if (kb) await kb.build(r.roots[0]);
+  }
+}
+
 /** An audio file onto a Drum Rack pad (its trim back to the whole sample) */
 async function audioToPad(app, track, i, file) {
   let s;
@@ -259,6 +279,14 @@ export function setupDrop(app) {
     e.preventDefault();
     depth = 0;
     hint.hidden = true;
+    // folders (and zips of them): into the library, and onto a Drum Rack as a kit when dropped on one
+    const entries = [...e.dataTransfer.items].map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)).filter(Boolean);
+    const zips = [...e.dataTransfer.files].filter((f) => /\.zip$/i.test(f.name));
+    const folders = entries.some((en) => en.isDirectory);
+    if (folders || zips.length) {
+      dropFolders(app, folders ? entries : null, zips, e.clientX, e.clientY).catch((err) => { console.error(err); toast("Import failed: " + (err.message || err), 4000); });
+      return;
+    }
     const files = [...e.dataTransfer.files];
     if (files.length) dropFiles(app, files, e.clientX, e.clientY).catch((err) => { console.error(err); toast("Import failed: " + (err.message || err), 4000); });
   });

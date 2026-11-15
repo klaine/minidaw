@@ -75,6 +75,7 @@ export class PianoRoll {
     const store = this.store, clip = this.clip;
     this.toolbar.textContent = "";
     const tool = segmented([{ value: "draw", label: "✎ Draw" }, { value: "select", label: "⬚ Select" }], store.ui.tool, (v) => { store.ui.tool = v; }, "pr-tool");
+    const view = this.drums ? segmented([{ value: "steps", label: "Steps" }, { value: "roll", label: "Piano roll" }], "roll", (v) => store.select({ drumView: v }), "pr-tool") : null;
     const grid = select(GRIDS.map(([v, l]) => ({ value: v, label: l })), this.grid, (v) => { store.ui.grid = +v; this.surf.draw(); }, "pr-grid");
     const len = h("span", { class: "pr-len" }, fmtLen(clip.length));
     const setLen = (L) => { this.store.update(() => { this.clip.length = Math.max(0.25, L); }, "notes"); len.textContent = fmtLen(this.clip.length); this.surf.draw(); };
@@ -82,7 +83,7 @@ export class PianoRoll {
     const meta = this.t && this.t.type === "midi" ? metaSync(this.t.instrument.kind) : null;
     const choices = [{ key: "vel", name: "Velocity" }, ...laneChoices(this.t, meta)];
     const lane = select(choices.map((c) => ({ value: c.key, label: c.name + (clip.env && clip.env[c.key] && clip.env[c.key].length ? " •" : "") })), this.laneKey, (v) => { this.laneKey = v; this.surf.draw(); }, "pr-lane");
-    this.toolbar.append(tool, grid,
+    this.toolbar.append(view, tool, grid,
       h("span", { class: "pr-group" }, h("span", { class: "dim" }, "Length"), btn("−", () => setLen(this.clip.length - (this.clip.length > 4 ? 4 : 1)), "Shorter"), len, btn("+", () => setLen(this.clip.length + (this.clip.length >= 4 ? 4 : 1)), "Longer")),
       btn("×2", () => this.duplicateLoop(), "Double the clip, its notes repeated"),
       btn("Quantize", () => this.quantize(), "Snap the selected notes (or all) to the grid"),
@@ -403,17 +404,7 @@ export class PianoRoll {
   }
 
   // ---- drawing ----
-  playheadLocal() {
-    const tr = this.app.transport;
-    if (!tr.playing) return null;
-    const clip = this.clip, b = tr.now();
-    const s = tr.session.get(this.trackId);
-    if (s && s.playing && s.playing.clipId === clip.id) return (((b.g - s.playing.gStart) % clip.length) + clip.length) % clip.length;
-    if (s && !s.follow) return null;
-    const t = this.t;
-    for (const pl of t.arrangement) if (pl.clipId === clip.id && b.s >= pl.start && b.s < pl.start + pl.length) return (((b.s - pl.start + (pl.offset || 0)) % clip.length) + clip.length) % clip.length;
-    return null;
-  }
+  playheadLocal() { return clipPlayhead(this.app, this.trackId, this.clip); }
 
   draw(c, w, hh) {
     const clip = this.clip, t = this.t;
@@ -561,4 +552,18 @@ export class PianoRoll {
 function fmtLen(beats) {
   if (beats % 4 === 0) return beats / 4 + (beats === 4 ? " bar" : " bars");
   return beats + " beats";
+}
+
+/** Where in a clip the transport is (clip-local beats), or null when the clip isn't playing */
+export function clipPlayhead(app, trackId, clip) {
+  const tr = app.transport;
+  if (!tr.playing || !clip) return null;
+  const b = tr.now();
+  const s = tr.session.get(trackId);
+  if (s && s.playing && s.playing.clipId === clip.id) return (((b.g - s.playing.gStart) % clip.length) + clip.length) % clip.length;
+  if (s && !s.follow) return null;
+  const t = app.store.track(trackId);
+  if (!t) return null;
+  for (const pl of t.arrangement) if (pl.clipId === clip.id && b.s >= pl.start && b.s < pl.start + pl.length) return (((b.s - pl.start + (pl.offset || 0)) % clip.length) + clip.length) % clip.length;
+  return null;
 }

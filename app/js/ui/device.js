@@ -8,6 +8,7 @@ import { metaSync, loadMeta } from "../audio/instruments.js";
 import { presetBrowser, pickSample } from "./browser.js";
 import { placeClip } from "../recording.js";
 import { importMidiToTrack } from "./import.js";
+import { openKitBuilder } from "./kitbuilder.js";
 
 /** Import a MIDI file onto a track: the selected session slot in the session, else the arrangement at the playhead */
 function importHere(app, t) {
@@ -204,7 +205,9 @@ class DrumDevice {
     this.pads = h("div", { class: "drum-pads" });
     this.editor = h("div", { class: "drum-edit" });
     this.el = h("div", { class: "drum" },
-      h("div", { class: "drum-left" }, this.pads, h("div", { class: "dim drum-hint" }, "Tap a pad to play and edit it · long press for more · drop an audio file on a pad")),
+      h("div", { class: "drum-left" }, this.pads,
+        h("button", { type: "button", class: "btn small drum-kit-btn", onclick: () => openKitBuilder(app, this.trackId) }, "Kit builder: samples from your folders…"),
+        h("div", { class: "dim drum-hint" }, "Tap a pad to play and edit it · long press for more · drop an audio file on a pad, or a folder for a whole kit")),
       this.editor);
     if (inst) inst.onHit = (i) => { this.flash[i] = 1; };
     this.refresh();
@@ -322,7 +325,8 @@ class DrumDevice {
         toggle("Reverse", pad.reverse, () => { this.setPad((pd) => { pd.reverse = !pd.reverse; }); this.refreshEditor(); }, "small"),
         toggle("Mute", pad.mute, () => { this.setPad((pd) => { pd.mute = !pd.mute; }); this.refresh(); }, "small"),
         choke,
-        h("button", { type: "button", class: "btn small", "aria-label": "More for this pad", onclick: (e) => this.padMenu(this.sel, e.currentTarget) }, "⋯")),
+        h("button", { type: "button", class: "btn small", "aria-label": "More for this pad", onclick: (e) => this.padMenu(this.sel, e.currentTarget) }, "⋯"),
+        h("button", { type: "button", class: "btn small", onclick: () => openKitBuilder(app, this.trackId) }, "Kit builder…")),
       h("div", { class: "drum-wave-box" }, canvas),
       h("div", { class: "dev-knobs drum-knobs" },
         kn("Level", (pad.gain ?? 0.8) / 1.25, 0.64, (pd, v) => { pd.gain = v * 1.25; }, (v) => (v <= 0 ? "-∞" : (20 * Math.log10(v * 1.25)).toFixed(1) + " dB")),

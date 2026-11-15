@@ -18,6 +18,7 @@ import { EditorHost } from "./ui/editor-host.js";
 import { Recording } from "./recording.js";
 import { demoProject } from "./demo.js";
 import { MidiInput } from "./midi.js";
+import { Library } from "./library.js";
 import { setupDrop } from "./ui/import.js";
 
 class App {
@@ -67,6 +68,9 @@ class App {
     this.engine.trackLookup = (id) => this.store.track(id);
     this.transport = new Transport(this.engine, () => this.store.project);
     this.recording = new Recording(this);
+    this.library = new Library(this.samples);
+    await this.library.load();
+    this.samples.onAdd = (rec) => this.library.remember(rec);
     persistStorage();
 
     let project = null;

@@ -13,7 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
-const { makeWav, makeMidi, readWav } = require("./files.cjs");
+const { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder } = require("./files.cjs");
 
 const ROOT = path.join(__dirname, "..", "..");
 const APP = path.join(ROOT, "app");
@@ -124,6 +124,15 @@ class User {
     }
     throw new Error(name + "'s lane can't be scrolled into view");
   }
+  /** In the sample library (a sheet): from the top, into folders, then a sample picked */
+  async libraryPick(folders, sample) {
+    const lib = this.page.locator(".lib").last();
+    await lib.locator(".lib-crumb", { hasText: /^Library$/ }).tap();
+    for (const f of folders) await lib.getByRole("button", { name: "Folder " + f, exact: true }).tap();
+    await lib.getByRole("button", { name: sample, exact: true }).tap();
+  }
+  /** A step of a row in the step sequencer */
+  step(pad, n) { return this.page.getByRole("button", { name: `${pad} step ${n}`, exact: true }); }
   /** The open piano roll's layout (the Kick row, beats 1-4), once it stays the same over a few frames */
   async settledRoll() {
     let last = "";
@@ -171,12 +180,8 @@ const FLOWS = {
     await u.header("Crest").waitFor();
     const p = await u.lanePoint("Drums", 0.5);
     await u.doubleTapAt(p.x, p.y);
-    await u.page.locator(".pr-canvas").waitFor();
-    // tap the Kick row at each beat of the bar
-    // look before tapping: the roll as it's drawn once it has settled (it fits the clip to its width when it opens)
-    const geo = await u.settledRoll();
-    const cv = await u.box(u.page.locator(".pr-canvas"));
-    for (const x of geo.beatX) await u.tapAt(cv.x + x, cv.y + geo.kickY);
+    // a Drum Rack's clip opens in the step sequencer: kicks on steps 1, 5, 9 and 13
+    for (const n of [1, 5, 9, 13]) await u.step("Kick", n).tap();
     const notes = await u.state(() => window.minidaw.store.selectedClip.notes.map((n) => [n.p, n.t]));
     assert.deepStrictEqual(notes, [[36, 0], [36, 1], [36, 2], [36, 3]], "four kicks on the beats, got " + JSON.stringify(notes));
     await u.tap("Play (space)");
@@ -193,7 +198,7 @@ const FLOWS = {
     await u.page.locator(".drum-pad-title", { hasText: "Pad 2 · Snare" }).waitFor();
     // a different sample from the picker
     await u.tap("Sample: Snare");
-    await u.page.locator(".smp-name", { hasText: "Clap" }).tap();
+    await u.libraryPick(["Built-in", "Drum kit"], "Clap");
     await u.page.locator(".drum-pad-title", { hasText: "Pad 2 · Clap" }).waitFor();
     // trim: drag the end marker to about a third
     const wave = await u.box(u.page.locator(".drum-wave"));
@@ -280,12 +285,8 @@ const FLOWS = {
     await u.boot();
     const p = await u.lanePoint("Drums", 1);
     await u.doubleTapAt(p.x, p.y);
-    await u.page.locator(".pr-canvas").waitFor();
-    // tap the Snare row's name, then Pad sounds: that pad's editor
-    await u.settledRoll();
-    const cv = await u.box(u.page.locator(".pr-canvas"));
-    const y = await u.state(() => { const pr = window.minidaw.views.panel.child; return pr.py(37) + pr.rowH / 2; });
-    await u.tapAt(cv.x + 20, cv.y + y);
+    // tap the Snare row's name in the steps, then Pad sounds: that pad's editor
+    await u.page.locator(".st-name", { hasText: "Snare" }).tap();
     await u.tap("Pad sounds");
     await u.page.locator(".drum-pad-title", { hasText: "Pad 2 · Snare" }).waitFor({ timeout: 3000 });
   },
@@ -336,6 +337,135 @@ const FLOWS = {
     const shown = await u.page.locator(".dev-preset-name").textContent();
     const name = await u.state(() => window.minidaw.engine.instrument(window.minidaw.store.ui.selTrack).get("preset_name"));
     assert.strictEqual(shown, name, "the device panel shows the patch the editor chose");
+  },
+
+  async "session: tap clips to play just them, tap again to stop"(u) {
+    await u.boot();
+    await u.tab("Session");
+    const clip = (name, n = 0) => u.page.getByRole("button", { name: name + ": tap to play or stop" }).nth(n);
+    await clip("Beat A").tap();
+    const [d, b, pad] = [await u.level("Drums", 1500), await u.level("Bass", 600), await u.level("Pad", 600)];
+    assert.ok(db(d) > -35, `the tapped clip plays (${db(d).toFixed(1)} dBFS)`);
+    assert.ok(b < 0.002 && pad < 0.002, "and nothing else: no arrangement under it");
+    await clip("Chords").tap();
+    assert.ok(db(await u.level("Pad", 3000)) > -40, "a second clip joins on the bar");
+    await clip("Beat A").tap();
+    await u.page.waitForTimeout(2500);
+    assert.ok((await u.level("Drums", 700)) < 0.002, "tapped again, the drums stop");
+    assert.ok(db(await u.level("Pad", 800)) > -40, "while the chords play on");
+    // the pencil: the clip in its editor
+    await u.page.getByRole("button", { name: "Edit Fill" }).tap();
+    await u.page.locator(".st-grid").waitFor();
+    assert.strictEqual(await u.state(() => window.minidaw.store.selectedClip.name), "Fill", "✎ opens that clip");
+  },
+
+  async "step sequencer: steps, accents, a ratchet, painting, pages, swing"(u) {
+    await u.boot();
+    await u.tab("Session");
+    // a new clip in an empty slot of the Drums (double tap), in the steps
+    const slot = u.page.locator('.ses-slot[data-scene="5"]').first();
+    await slot.dblclick();
+    await u.page.locator(".st-grid").waitFor();
+    for (const n of [1, 5, 9, 13]) await u.step("Kick", n).tap();
+    await u.tap("Accent");
+    for (const n of [5, 13]) await u.step("Snare", n).tap();
+    await u.tap("Accent");
+    // paint closed hats along steps 9-12: one drag
+    const a = await u.box(u.step("Closed Hat", 9)), b = await u.box(u.step("Closed Hat", 12));
+    await u.drag(a.x + a.width / 2, a.y + a.height / 2, b.x + b.width / 2, b.y + b.height / 2);
+    // a ratchet on hat step 3: hold for the step's menu
+    const h3 = await u.box(u.step("Closed Hat", 3));
+    await u.longPressAt(h3.x + h3.width / 2, h3.y + h3.height / 2);
+    await u.menuItem("Ratchet ×3");
+    const notes = await u.state(() => window.minidaw.store.selectedClip.notes.map((n) => [n.p, +n.t.toFixed(3), n.v]).sort((x, y) => x[0] - y[0] || x[1] - y[1]));
+    const of = (p) => notes.filter((n) => n[0] === p);
+    assert.deepStrictEqual(of(36).map((n) => n[1]), [0, 1, 2, 3], "kicks on the beats");
+    assert.ok(of(37).length === 2 && of(37).every((n) => n[2] === 127), "accented snares on 2 and 4");
+    assert.deepStrictEqual(of(38).map((n) => n[1]), [0.5, 0.583, 0.667, 2, 2.25, 2.5, 2.75], "a ratchet of three on step 3, and the painted run on 9-12");
+    await u.tap("Undo");
+    assert.strictEqual((await u.state(() => window.minidaw.store.selectedClip.notes.filter((n) => n.p === 38).length)), 4, "Undo takes the ratchet back as one step");
+    // two bars: page 2
+    await u.page.locator(".st-toolbar").getByTitle("A bar longer").tap();
+    await u.button("Page 2").tap();
+    await u.step("Kick", 17).tap();
+    assert.ok(await u.state(() => window.minidaw.store.selectedClip.notes.some((n) => n.p === 36 && n.t === 4)), "page 2's first step is beat 5");
+    // swing: the knob up
+    const k = await u.box(u.page.locator(".st-toolbar .knob", { hasText: "Swing" }));
+    await u.drag(k.x + k.width / 2, k.y + 20, k.x + k.width / 2, k.y - 30);
+    assert.ok(await u.state(() => window.minidaw.store.selectedClip.swing > 0.15), "swing set");
+    // play it: heard, and the playhead walks the steps
+    await u.page.getByRole("button", { name: /^Recorded|^Drums: tap to play or stop/ }).first().tap().catch(async () => { await u.tap("Play (space)"); });
+    await u.until(() => !!document.querySelector(".st-cell.now"), "the playhead in the steps", 4000);
+    assert.ok(db(await u.level("Drums", 1500)) > -35, "the beat plays");
+  },
+
+  async "kit builder: a folder with subfolders becomes a kit"(u) {
+    await u.boot();
+    await u.header("Drums").locator(".th-name").tap();
+    await u.tab("Device");
+    await u.tap("Kit builder…");
+    const lib = u.page.locator(".kb .lib");
+    await lib.waitFor();
+    await u.tap("Import ▾");
+    const dir = writeKitFolder(OUT, "Studio Kit");
+    await u.chooseFile(() => u.menuItem("A folder (with its subfolders)"), dir);
+    await u.page.locator(".toast", { hasText: "8 samples added, 1 skipped" }).waitFor({ timeout: 10000 });
+    // the folders as they were
+    await lib.locator(".lib-crumb", { hasText: /^Studio Kit$/ }).waitFor();
+    const folders = await lib.locator(".lib-folder .lib-name").allTextContents();
+    assert.deepStrictEqual(folders, ["Claps", "Hats", "Kicks", "Perc", "Snares"], "the subfolders kept");
+    await u.tap("Build from this folder");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name !== "Kick", "the pads to change", 8000);
+    const pads = (await u.track("Drums")).instrument.state.pads.map((p) => p.name);
+    assert.deepStrictEqual(pads.slice(0, 5), ["Kick 01", "Snare Tight", "Closed Hat", "Open Hat", "Clap 02"], "kick, snare, hats and clap on their pads: " + pads.slice(0, 5));
+    assert.strictEqual(pads[14], "Kick 02", "the second kick on the 808 pad");
+    assert.ok(pads.includes("Conga") && pads.includes("Shaker Loop"), "the rest on pads too");
+    await u.button("Kit pad 1: Kick 01").tap();
+    assert.ok(db(await u.level("Drums", 600)) > -35, "the kit plays");
+    // one sample by hand: pick it, then a pad
+    await lib.getByRole("button", { name: "Folder Perc", exact: true }).tap();
+    await lib.getByRole("button", { name: "Conga", exact: true }).tap();
+    await u.page.getByRole("button", { name: /^Kit pad 16:/ }).tap();
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[15].name === "Conga", "pad 16", 8000);
+    assert.strictEqual((await u.track("Drums")).instrument.state.pads[15].name, "Conga", "pad 16 is the conga");
+    // save it, go back to the default kit, load it again
+    await u.tap("Save kit…");
+    await u.page.locator(".sheet input.text").last().fill("Studio");
+    await u.sheetButton("OK");
+    await u.tap("Default kit");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick", "the default kit", 8000);
+    assert.strictEqual((await u.track("Drums")).instrument.state.pads[0].name, "Kick", "the default kit");
+    await u.tap("Kits ▾");
+    await u.menuItem("Studio");
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[0].name === "Kick 01", "the saved kit", 8000);
+    assert.strictEqual((await u.track("Drums")).instrument.state.pads[0].name, "Kick 01", "the saved kit back");
+    // search every folder
+    await lib.locator(".lib-search").fill("open hat");
+    const found = await lib.locator(".lib-sample").allTextContents();
+    assert.ok(found.some((t) => t.includes("Open Hat") && t.includes("Studio Kit/Hats")), "search finds it in its subfolder: " + JSON.stringify(found));
+    assert.ok(found.every((t) => /open hat/i.test(t)), "and only open hats");
+    await u.sheetButton("Done");
+  },
+
+  async "kit builder: a zip (the iPad way), and a zip dropped on the drums"(u) {
+    await u.boot();
+    await u.tap("Add a track");
+    await u.menuItem("Drum Rack from a sample folder");
+    const lib = u.page.locator(".kb .lib");
+    await lib.waitFor();
+    await u.tap("Import ▾");
+    const zip = makeZip(kitFiles().map((f) => ({ path: "Zip Kit/" + f.path, bytes: f.bytes })));
+    await u.chooseFile(() => u.menuItem("A zip of a folder"), { name: "Zip Kit.zip", mimeType: "application/zip", buffer: zip });
+    await lib.locator(".lib-crumb", { hasText: /^Zip Kit$/ }).waitFor({ timeout: 10000 });
+    await u.tap("Build from this folder");
+    await u.until(() => window.minidaw.store.selectedTrack.instrument.state.pads[0].name !== "Kick", "the pads to change", 8000);
+    const pads = await u.state(() => window.minidaw.store.selectedTrack.instrument.state.pads.map((p) => p.name));
+    assert.deepStrictEqual(pads.slice(0, 2), ["Kick 01", "Snare Tight"], "the zip's kit: " + pads.slice(0, 4));
+    await u.sheetButton("Done");
+    // a zip dropped on the demo's Drums: a kit right away
+    const hd = await u.box(u.header("Drums").first()); // the demo's (the new kit's track is a "Drums" too, after it)
+    await u.dropFiles(hd.x + 60, hd.y + 20, [{ name: "Dropped.zip", type: "application/zip", bytes: makeZip(kitFiles().map((f) => ({ path: "Dropped/" + f.path, bytes: f.bytes }))) }]);
+    await u.until(() => window.minidaw.store.project.tracks.find((t) => t.name === "Drums").instrument.state.pads[1].name === "Snare Tight", "the dropped kit on the Drums", 10000);
   },
 
   async "session: launch a scene, stop a track, back to the arrangement"(u) {
@@ -472,7 +602,7 @@ const FLOWS = {
     await u.header("Tops").locator(".th-name").tap();
     await u.tab("Device");
     await u.tap("Add a sample at the playhead");
-    await u.page.locator(".smp-name", { hasText: "Breakbeat 96" }).tap();
+    await u.libraryPick(["Built-in", "Loops"], "Breakbeat 96");
     const tops = await u.track("Tops");
     const pl = tops.arrangement.find((x) => x.start === 0);
     const clip = pl && await u.state((id) => window.minidaw.store.project.clips[id], pl.clipId);

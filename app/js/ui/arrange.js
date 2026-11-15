@@ -102,7 +102,7 @@ export class ArrangeView {
       this.headers.append(row);
       for (const key of t.lanes) {
         const choices = laneChoices(t, t.type === "midi" ? metaSync(t.instrument.kind) : null);
-        const sel2 = h("select", { class: "sel lh-sel", onchange: () => store.update((p) => { const x = tr(p, t); x.lanes[x.lanes.indexOf(key)] = sel2.value; }, "tracks") },
+        const sel2 = h("select", { class: "dropdown lh-sel", onchange: () => store.update((p) => { const x = tr(p, t); x.lanes[x.lanes.indexOf(key)] = sel2.value; }, "tracks") },
           choices.map((ch) => h("option", { value: ch.key, selected: ch.key === key }, ch.name + (t.automation[ch.key] && t.automation[ch.key].length ? " •" : ""))));
         const lane = h("div", { class: "lh", style: { height: LANE_H + "px", "--tc": t.color } },
           sel2,

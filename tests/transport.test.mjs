@@ -157,6 +157,52 @@ console.log("the arrangement comes back");
   ctx.currentTime = 0;
 }
 
+console.log("playing chosen clips from the session");
+{
+  const { p, t, events, tr, ctx } = rig();
+  const other = newTrack(p, "midi", "crest");
+  p.tracks.push(other);
+  const otherEvents = [];
+  tr.engine.channels.set(other.id, { instrument: { noteOn: (n, v, time) => otherEvents.push({ n, time }), noteOff() {}, setNorm() {}, flushEvents() {}, tempo() {}, stop() {} }, params: {}, input: {}, stopSources() {}, addSource() { return {}; } });
+  const ownChannel = tr.engine.channel;
+  tr.engine.channel = (id) => tr.engine.channels.get(id) || ownChannel(id);
+  const arr = newMidiClip(p, other, 4);
+  arr.notes.push({ p: 40, t: 0, d: 0.5, v: 100 });
+  other.arrangement.push({ id: "o", clipId: arr.id, start: 0, length: 16, offset: 0 });
+  const sc = newMidiClip(p, t, 4);
+  sc.notes.push({ p: 72, t: 0, d: 0.5, v: 100 });
+  t.slots[1] = sc.id;
+  tr.offline = false;
+  check(tr.toggleClip(t.id, 1) === "launch", "a tap launches the clip");
+  clearInterval(tr.timer);
+  for (let i = 0; i < 8; i++) tr.step();
+  check(events.some((e) => e.k === "on" && e.n === 72), "it plays");
+  check(otherEvents.length === 0, "and only it: the other track's arrangement stays quiet (" + otherEvents.length + " notes)");
+  ctx.currentTime = tr.segments[tr.segments.length - 1].t0;
+  check(tr.toggleClip(t.id, 1) === "stop", "a second tap stops it");
+  for (let i = 0; i < 24; i++) tr.step();
+  check(!tr.session.get(t.id).playing, "on the bar");
+  events.length = 0;
+  for (let i = 0; i < 16; i++) tr.step();
+  check(!events.some((e) => e.k === "on"), "then silence");
+  tr.toggleClip(t.id, 1);
+  check(tr.toggleClip(t.id, 1) === "cancelled", "a tap on a clip about to start cancels it");
+  tr.stop();
+  ctx.currentTime = 0;
+}
+
+console.log("swing");
+{
+  const { p, t, events, tr } = rig();
+  const c = newMidiClip(p, t, 4);
+  for (let i = 0; i < 4; i++) c.notes.push({ p: 42, t: i * 0.25, d: 0.25, v: 100 });
+  c.swing = 1;
+  t.arrangement.push({ id: "a", clipId: c.id, start: 0, length: 4, offset: 0 });
+  tr.renderRange(0, 4);
+  const ons = events.filter((e) => e.k === "on").map((e) => +e.time.toFixed(4));
+  check(JSON.stringify(ons) === JSON.stringify([0, 0.1875, 0.25, 0.4375]), "the off-beat 16ths come an eighth of a beat late: " + JSON.stringify(ons));
+}
+
 console.log("count-in");
 {
   const { p, t, events, tr } = rig();

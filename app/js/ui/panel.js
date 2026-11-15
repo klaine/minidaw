@@ -4,6 +4,7 @@ import { h } from "../util.js";
 import { segmented } from "./controls.js";
 import { DeviceView } from "./device.js";
 import { PianoRoll } from "./pianoroll.js";
+import { StepSequencer } from "./steps.js";
 import { AudioClipEditor } from "./audioclip.js";
 import { KeysView } from "./keyboard.js";
 
@@ -26,7 +27,8 @@ export class Panel {
     if (clip && t && !t.slots.includes(clip.id) && !t.arrangement.some((x) => x.clipId === clip.id)) { ui.selClip = null; clip = null; }
     this.tabs.set(ui.panel);
     const kind = t && t.type === "midi" ? t.instrument.kind : t ? "audio" : "none";
-    const key = [ui.panel, t ? t.id : "", ui.panel === "clip" && clip ? clip.id + ":" + clip.type : "", kind].join("|");
+    const drumSteps = kind === "drumrack" && (ui.drumView || "steps") === "steps"; // a Drum Rack's clips open in the step sequencer
+    const key = [ui.panel, t ? t.id : "", ui.panel === "clip" && clip ? clip.id + ":" + clip.type : "", kind, drumSteps].join("|");
     this.title.textContent = t ? t.name + (ui.panel === "clip" && clip ? " · " + clip.name : "") : "";
     this.title.style.setProperty("--tc", t ? t.color : "#888");
     if (key === this.key && this.child) {
@@ -41,7 +43,7 @@ export class Panel {
     if (ui.panel === "device") this.child = new DeviceView(app, t);
     else if (ui.panel === "clip") {
       if (!clip) this.body.append(h("p", { class: "panel-empty" }, "Select a clip to edit it: tap one in the arrangement or the session, or double tap an empty place to make one."));
-      else if (clip.type === "midi") this.child = new PianoRoll(app, t, clip);
+      else if (clip.type === "midi") this.child = drumSteps ? new StepSequencer(app, t, clip) : new PianoRoll(app, t, clip);
       else this.child = new AudioClipEditor(app, t, clip);
     } else this.child = new KeysView(app, t);
     if (this.child) this.body.append(this.child.el);

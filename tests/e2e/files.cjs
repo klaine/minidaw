@@ -59,4 +59,46 @@ function readWav(buf) {
   };
 }
 
-module.exports = { makeWav, makeMidi, readWav };
+/** A zip of files ([{ path, bytes }]), deflated: written here, not by the app */
+function makeZip(files) {
+  const zlib = require("zlib");
+  const table = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (u) => { let c = 0xffffffff; for (const x of u) c = table[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunks = [], central = [];
+  let off = 0;
+  for (const f of files) {
+    const name = Buffer.from(f.path, "utf8"), data = zlib.deflateRawSync(f.bytes);
+    const loc = Buffer.alloc(30);
+    loc.writeUInt32LE(0x04034b50, 0); loc.writeUInt16LE(20, 4); loc.writeUInt16LE(0x800, 6); loc.writeUInt16LE(8, 8);
+    loc.writeUInt32LE(crc(f.bytes), 14); loc.writeUInt32LE(data.length, 18); loc.writeUInt32LE(f.bytes.length, 22); loc.writeUInt16LE(name.length, 26);
+    chunks.push(loc, name, data);
+    const cen = Buffer.alloc(46);
+    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6); cen.writeUInt16LE(0x800, 8); cen.writeUInt16LE(8, 10);
+    cen.writeUInt32LE(crc(f.bytes), 16); cen.writeUInt32LE(data.length, 20); cen.writeUInt32LE(f.bytes.length, 24); cen.writeUInt16LE(name.length, 28); cen.writeUInt32LE(off, 42);
+    central.push(cen, name);
+    off += 30 + name.length + data.length;
+  }
+  const size = central.reduce((n, b) => n + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(size, 12); end.writeUInt32LE(off, 16);
+  return Buffer.concat([...chunks, ...central, end]);
+}
+
+/** A sample folder as a producer's might be: subfolders by drum, plus a file that isn't audio */
+const KIT_FILES = [
+  ["Kicks/Kick 01.wav", 55], ["Kicks/Kick 02.wav", 48], ["Snares/Snare Tight.wav", 190], ["Hats/Closed Hat.wav", 6000],
+  ["Hats/Open Hat.wav", 5200], ["Claps/Clap 02.wav", 1100], ["Perc/Conga.wav", 300], ["Perc/Shaker Loop.wav", 7000],
+];
+function kitFiles() {
+  return [...KIT_FILES.map(([path, freq]) => ({ path, bytes: makeWav({ freq, seconds: 0.25 }) })), { path: "readme.txt", bytes: Buffer.from("not a sample") }];
+}
+/** The kit folder on disk at dir/<name> (for a folder picker) */
+function writeKitFolder(dir, name) {
+  const fs = require("fs"), path = require("path");
+  const root = path.join(dir, name);
+  fs.rmSync(root, { recursive: true, force: true });
+  for (const f of kitFiles()) { const p = path.join(root, f.path); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, f.bytes); }
+  return root;
+}
+
+module.exports = { makeWav, makeMidi, readWav, makeZip, kitFiles, writeKitFolder };

@@ -207,7 +207,9 @@ export function confirmBox(title, text, ok = "OK", danger = false) {
 }
 
 export function toast(text, ms = 2600) {
-  const t = h("div", { class: "toast" }, text);
+  // stacked above the ones still showing
+  const below = [...document.querySelectorAll(".toast")].reduce((y, x) => y + x.offsetHeight + 8, 0);
+  const t = h("div", { class: "toast", style: { marginBottom: below + "px" } }, text);
   document.body.append(t);
   requestAnimationFrame(() => t.classList.add("in"));
   setTimeout(() => { t.classList.remove("in"); setTimeout(() => t.remove(), 300); }, ms);
@@ -259,7 +261,7 @@ export function segmented(options, value, onChange, cls = "") {
 }
 
 export function select(options, value, onChange, cls = "") {
-  const s = h("select", { class: "sel " + cls, onchange: () => onChange(s.value) });
+  const s = h("select", { class: "dropdown " + cls, onchange: () => onChange(s.value) });
   for (const o of options) s.append(h("option", { value: o.value, selected: String(o.value) === String(value) }, o.label));
   return s;
 }

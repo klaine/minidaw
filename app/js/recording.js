@@ -98,7 +98,7 @@ export class Recording {
     const countIn = playing ? 0 : (this.prefs.countIn | 0) * sig;
     this.mode = slot ? "session" : "arrange";
     if (this.mode === "session") {
-      if (!playing) tr.play(tr.position, { countIn });
+      if (!playing) tr.play(tr.position, { countIn, sessionOnly: true }); // a loop recorded from a stop: the arrangement stays quiet
       this.startG = playing ? tr.quantizedG() : countIn;
       this.startS = null;
       const t = store.track(slot.trackId);

@@ -13,7 +13,10 @@ export class SessionView {
   constructor(app) {
     this.app = app;
     this.grid = h("div", { class: "ses-grid" });
-    this.el = h("section", { class: "view session" }, h("div", { class: "ses-scroll" }, this.grid));
+    this.hint = h("div", { class: "ses-hint" },
+      h("span", {}, "Tap a clip to play it, again to stop"), h("span", {}, "✎ edits it"), h("span", {}, "▶ on the right plays a row"),
+      h("span", {}, "■ stops a track"), h("span", {}, "long press for more"));
+    this.el = h("section", { class: "view session" }, this.hint, h("div", { class: "ses-scroll" }, this.grid));
     this.cells = new Map();
   }
   get p() { return this.app.store.project; }
@@ -82,14 +85,21 @@ export class SessionView {
     let el;
     if (clip) {
       el = h("div", { class: "ses-slot clip" + (store.ui.selClip === clip.id ? " sel" : "") + (clip.rec ? " recording" : ""), dataset: { track: t.id, scene: s }, style: { "--cc": clip.color || t.color } },
-        h("span", { class: "ses-play", html: clip.rec ? REC : PLAY }), h("span", { class: "ses-clip-name" }, clip.name), h("span", { class: "ses-prog" }));
+        h("span", { class: "ses-play", html: clip.rec ? REC : PLAY }), h("span", { class: "ses-clip-name" }, clip.name),
+        h("span", { class: "ses-edit", role: "button", title: "Edit the clip", "aria-label": "Edit " + clip.name }, "✎"), h("span", { class: "ses-prog" }));
+      el.setAttribute("role", "button");
+      el.setAttribute("aria-label", clip.name + ": tap to play or stop");
       gestures(el, {
         tap: (pos) => {
           if (app.recording.slotState(t.id, s)) { app.recording.stop(); return; } // recording here: done
-          if (pos.x < 38) app.transport.launch(t.id, s);
-          else store.select({ selTrack: t.id, selClip: clip.id, selSlot: { trackId: t.id, scene: s }, panel: "clip" }) || this.render();
+          const edit = pos.x > el.clientWidth - 40;
+          // tapping a clip plays it (or stops it); it's selected too, so the Clip tab shows it
+          store.ui.selTrack = t.id; store.ui.selClip = clip.id; store.ui.selSlot = { trackId: t.id, scene: s };
+          if (edit) { store.select({ panel: "clip" }); this.render(); return; }
+          app.transport.toggleClip(t.id, s);
+          store.select({});
+          this.markSelection();
         },
-        doubleTap: () => app.transport.launch(t.id, s),
         longPress: (pos, e) => this.clipMenu(t, s, clip, { x: e.clientX, y: e.clientY }),
       });
     } else {
@@ -100,7 +110,7 @@ export class SessionView {
           store.select({ selTrack: t.id, selSlot: { trackId: t.id, scene: s }, selClip: null });
           // an armed track's empty slot records (as Ableton's slot record buttons); tapping it again stops
           if (t.mixer.arm || app.recording.slotState(t.id, s)) { app.recording.recordSlot(t.id, s); return; }
-          this.render();
+          this.markSelection(); // not a re-render: the element stays, so a second tap makes it a double tap
         },
         doubleTap: () => this.create(t, s),
         longPress: (pos, e) => menu({ x: e.clientX, y: e.clientY }, [
@@ -144,8 +154,8 @@ export class SessionView {
   clipMenu(t, s, clip, at) {
     const app = this.app, store = app.store;
     menu(at, [
-      { label: "Launch", onClick: () => app.transport.launch(t.id, s) },
-      { label: "Open in editor", onClick: () => store.select({ selTrack: t.id, selClip: clip.id, panel: "clip" }) },
+      { label: "Play / stop", onClick: () => app.transport.toggleClip(t.id, s) },
+      { label: "Edit", onClick: () => store.select({ selTrack: t.id, selClip: clip.id, selSlot: { trackId: t.id, scene: s }, panel: "clip" }) },
       { label: "Copy to the arrangement at the playhead", onClick: () => {
         const at0 = Math.floor(app.transport.position / 4) * 4;
         store.update((p) => placeClip(p.tracks.find((x) => x.id === t.id), { id: uid("a"), clipId: clip.id, start: at0, length: clip.length, offset: 0 }), "arrange");
@@ -181,6 +191,17 @@ export class SessionView {
       for (const t of p.tracks) { const c = p.clips[t.slots[s]]; if (c) placeClip(t, { id: uid("a"), clipId: c.id, start: at0, length: len, offset: 0 }); }
     }, "arrange");
     toast("Scene copied to bar " + (at0 / 4 + 1));
+  }
+
+  /** The selected clip's outline, without rebuilding the grid (that would interrupt a quick second tap) */
+  markSelection() {
+    const ui = this.app.store.ui, sel = ui.selClip, ss = ui.selSlot;
+    for (const el of this.grid.querySelectorAll(".ses-slot")) {
+      const t = this.app.store.track(el.dataset.track), scene = Number(el.dataset.scene);
+      if (el.classList.contains("clip")) el.classList.toggle("sel", !!t && t.slots[scene] === sel);
+      else el.classList.toggle("sel", !!ss && ss.trackId === el.dataset.track && ss.scene === scene);
+    }
+    for (const head of this.grid.querySelectorAll(".ses-head[data-track]")) head.classList.toggle("sel", head.dataset.track === ui.selTrack);
   }
 
   paintStates() {

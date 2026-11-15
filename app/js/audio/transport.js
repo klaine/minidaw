@@ -13,6 +13,16 @@ const LOOKAHEAD = 0.14;   // seconds scheduled ahead of the audio clock
 const AUTO_RES = 1 / 16;  // beats between automation points
 const EPS = 1e-7;
 
+/** Swing (a clip's 0..1): the off-beat 16ths come late, by up to 1/8 of a beat (at 1, about a triplet shuffle) */
+export const SWING_MAX = 0.125;
+export function swingDelay(clip, t) {
+  const sw = clip.swing || 0;
+  if (sw <= 0) return 0;
+  const k = t / 0.25;
+  const i = Math.round(k);
+  return Math.abs(k - i) < 1e-4 && i % 2 === 1 ? sw * SWING_MAX : 0;
+}
+
 export class Transport {
   constructor(engine, getProject, { offline = false } = {}) {
     this.engine = engine;
@@ -71,11 +81,13 @@ export class Transport {
 
   // ---- play / stop ----
   /** Play from song beat `from`; countIn: beats of clicks first (the song is silent until `from`) */
-  play(from = this.position, { countIn = 0, keepSession = false } = {}) {
+  play(from = this.position, { countIn = 0, keepSession = false, sessionOnly = false } = {}) {
     if (this.playing) this.halt();
     const p = this.project;
     // from a stop nothing is playing in the session: every track follows the arrangement, except ones being launched
+    // (sessionOnly, started by a launch: none does, only what was launched plays)
     if (!keepSession) for (const s of this.session.values()) if (!s.queued) { s.playing = null; s.follow = true; }
+    if (sessionOnly) this.sessionOnly();
     this.playing = true;
     this.playStart = from;
     this.prerollEnd = countIn > 0 ? from : null;
@@ -153,11 +165,27 @@ export class Transport {
     const s = this.sess(trackId);
     if (!this.playing) {
       s.queued = { scene, clipId, gAt: 0 };
-      this.play(this.position);
+      this.play(this.position, { sessionOnly: true });
     } else {
       s.queued = { scene, clipId, gAt: this.quantizedG() };
     }
     this.emit("session");
+  }
+  /** A clip tapped in the session: it plays, or (playing, or about to) it stops */
+  toggleClip(trackId, scene) {
+    const s = this.sess(trackId);
+    if (s.queued && s.queued.scene === scene) { s.queued = null; this.emit("session"); return "cancelled"; }
+    const stopping = s.queued && s.queued.scene === -1;
+    if (this.playing && s.playing && s.playing.scene === scene && !stopping) { this.stopTrack(trackId); return "stop"; }
+    this.launch(trackId, scene);
+    return "launch";
+  }
+  /** Started from the session: only what was launched plays (the other tracks leave the arrangement, silent) */
+  sessionOnly() {
+    for (const t of this.project.tracks) {
+      const s = this.sess(t.id);
+      if (!s.queued && !s.playing) s.follow = false;
+    }
   }
   launchScene(scene) {
     const p = this.project;
@@ -169,7 +197,7 @@ export class Transport {
       if (clipId) s.queued = { scene, clipId, gAt };
       else if (s.playing) s.queued = { scene: -1, clipId: null, gAt };
     }
-    if (!wasPlaying) this.play(this.position);
+    if (!wasPlaying) this.play(this.position, { sessionOnly: true });
     this.emit("session");
   }
   stopTrack(trackId) {
@@ -328,9 +356,10 @@ export class Transport {
         if (m !== n && m.p === n.p && m.t > n.t + EPS && m.t - n.t < d) d = m.t - n.t;
       }
       if (d <= EPS) continue;
-      const on = t + (n.t - a) * spb;
+      const late = swingDelay(clip, n.t);
+      const on = t + (n.t - a + late) * spb;
       inst.noteOn(n.p, n.v, on);
-      inst.noteOff(n.p, on + d * spb - 0.0005);
+      inst.noteOff(n.p, on + Math.max(EPS, d - late) * spb - 0.0005);
     }
   }
 
